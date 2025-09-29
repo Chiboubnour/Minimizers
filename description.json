@@ -1,0 +1,104 @@
+{
+    "name": "HBM DNA Sequence Hash (XRT Native API)",
+    "description": [
+        "This example demonstrates how to use an HLS kernel with High Bandwidth Memory (HBM) on the Alveo U280 to compute hash values for DNA sequence fragments. The kernel is implemented in C++ (Vitis HLS) and accessed via the XRT Native API to achieve high throughput."
+    ],
+    "flow": "vitis",
+    "keywords": [
+        "HBM",
+        "DNA",
+        "hash computation",
+        "bioinformatics"
+    ],
+    "key_concepts": [
+        "High Bandwidth Memory",
+        "Multiple HBM Banks",
+        "Dataflow",
+        "Streaming"
+    ],
+    "platform_blocklist": [
+        "u25_",
+        "u30",
+        "u200",
+        "zc",
+        "vck",
+        "u250",
+        "aws",
+        "samsung",
+        "u2_",
+        "x3522pv",
+        "nodma",
+        "v70"
+    ],
+    "platform_type": "pcie",
+    "targets": [
+        "hw",
+        "hw_emu"
+    ],
+    "os": [
+        "Linux"
+    ],
+    "runtime": [
+        "OpenCL"
+    ],
+    "host": {
+        "host_exe": "hach_minimizer_host",
+        "compiler": {
+            "sources": [
+                "./src/host.cpp"
+            ],
+            "includepaths": [
+                "REPO_DIR/common/includes/cmdparser",
+                "REPO_DIR/common/includes/logger"
+            ]
+        },
+        "linker": {
+            "libraries": [
+                "uuid",
+                "xrt_coreutil"
+            ]
+        }
+    },
+    "containers": [
+        {
+            "accelerators": [
+                {
+                    "name": "hach_minimizer",
+                    "location": "src/krnl_minimizer.cpp"
+                }
+            ],
+            "name": "hach_minimizer",
+            "ldclflags": "--config PROJECT/krnl_minimizer.cfg"
+        }
+    ],
+    "launch": [
+        {
+            "cmd_args": "-x BUILD/hach_minimizer.xclbin",
+            "name": "generic launch for all flows"
+        }
+    ],
+    "contributors": [
+        {
+            "url": "http://www.xilinx.com",
+            "group": "Xilinx"
+        }
+    ],
+    "testinfo": {
+        "disable": false,
+        "jobs": [
+            {
+                "index": 0,
+                "dependency": [],
+                "env": "",
+                "cmd": "",
+                "max_memory_MB": 32768,
+                "max_time_min": 300
+            }
+        ],
+        "targets": [
+            "vitis_hw_emu",
+            "vitis_hw"
+        ],
+        "category": "canary"
+    }
+}
