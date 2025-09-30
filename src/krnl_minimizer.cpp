@@ -243,9 +243,9 @@ void krnl_minimizer(
 ) {
     #pragma HLS INTERFACE mode=m_axi     port=packed_sequence offset=slave bundle=gmem_seq
     #pragma HLS INTERFACE mode=m_axi     port=tab_hash        offset=slave bundle=gmem_out    
-    #pragma HLS INTERFACE mode=s_axilite port=nMinizrs                     bundle=control
-    #pragma HLS INTERFACE mode=s_axilite port=n                            bundle=control
-    #pragma HLS INTERFACE mode=s_axilite port=return                       bundle=control
+    #pragma HLS INTERFACE mode=s_axilite port=nMinizrs                     
+    #pragma HLS INTERFACE mode=s_axilite port=n                            
+    #pragma HLS INTERFACE mode=s_axilite port=return                      
 
     #pragma HLS DATAFLOW
 
