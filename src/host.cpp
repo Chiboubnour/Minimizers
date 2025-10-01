@@ -55,15 +55,14 @@ double run_krnl(xrt::device& device, xrt::kernel& krnl,
     size_t output_size_bytes = n_smers * sizeof(uint64_t);
 
     std::cout << "Allocation des buffers en mémoire globale...\n";
-    auto bo_seq      = xrt::bo(device, input_size_bytes, bank_assign[0]); // entrée séquence
-    auto bo_hash     = xrt::bo(device, output_size_bytes, bank_assign[1]); // sortie hash/minimisers
-    auto bo_nMinizrs = xrt::bo(device, sizeof(uint64_t), bank_assign[2]);  // sortie : nb minimizers trouvés (64 bits)
+    auto bo_seq      = xrt::bo(device, input_size_bytes, bank_assign[0]); 
+    auto bo_hash     = xrt::bo(device, output_size_bytes, bank_assign[1]); 
+    auto bo_nMinizrs = xrt::bo(device, sizeof(uint64_t), bank_assign[2]);  
 
     auto seq_map  = bo_seq.map<uint64_t*>();
     auto hash_map = bo_hash.map<uint64_t*>();
     auto nmin_map = bo_nMinizrs.map<uint64_t*>();
 
-    // Copier séquence packée
     for (size_t i = 0; i < packed_seq.size(); i++)
         seq_map[i] = packed_seq[i];
 
@@ -87,7 +86,6 @@ double run_krnl(xrt::device& device, xrt::kernel& krnl,
     return kernel_time.count();
 }
 
-// === Programme principal ===
 int main(int argc, char* argv[]) {
     if (argc < 4) {
         std::cout << "Usage: " << argv[0] << " <xclbin_file> <device_id> <fasta_file>\n";
@@ -108,7 +106,6 @@ int main(int argc, char* argv[]) {
 
     int bank_assign[3] = {0, 1, 2};
 
-    // === Lire la séquence depuis le FASTA ===
     std::string sequence = read_fasta(fastaFile);
     size_t n = sequence.size();
     std::cout << "\n=== Test avec n=" << n << " bases ===" << std::endl;
@@ -118,7 +115,6 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Encodage en uint8_t
     std::vector<uint8_t> sequence_bytes(n);
     for (size_t i = 0; i < n; i++)
         sequence_bytes[i] = sequence[i];
@@ -133,7 +129,6 @@ int main(int argc, char* argv[]) {
         packed_seq[word_idx] |= static_cast<uint64_t>(sequence_bytes[i]) << shift;
     }
 
-    // Exécution kernel
     double kernel_time_in_sec = run_krnl(device, krnl, bank_assign, packed_seq, n);
 
     std::cout << "Temps d'exécution du kernel : " << kernel_time_in_sec << " s\n";
