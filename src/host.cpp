@@ -32,11 +32,11 @@ size_t output_size_bytes = n_smers * sizeof(uint64_t);
 std::cout << "Allocation des buffers en mémoire globale...\n";
 auto bo_seq      = xrt::bo(device, input_size_bytes, bank_assign[0]); // entrée séquence
 auto bo_hash     = xrt::bo(device, output_size_bytes, bank_assign[1]); // sortie hash/minimisers
-auto bo_nMinizrs = xrt::bo(device, sizeof(uint32_t), bank_assign[2]);  // sortie : nb minimizers trouvés
+auto bo_nMinizrs = xrt::bo(device, sizeof(uint64_t), bank_assign[2]);  // sortie : nb minimizers trouvés (64 bits)
 
 auto seq_map  = bo_seq.map<uint64_t*>();
 auto hash_map = bo_hash.map<uint64_t*>();
-auto nmin_map = bo_nMinizrs.map<uint32_t*>();
+auto nmin_map = bo_nMinizrs.map<uint64_t*>();
 
 // Copier séquence packée
 for (size_t i = 0; i < packed_seq.size(); i++)
