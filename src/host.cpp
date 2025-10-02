@@ -4,88 +4,92 @@
 #include <vector>
 #include <chrono>
 #include <algorithm>
-#include <stdint.h>
-#include <stdlib.h>
+#include <cctype>
+#include <cstdint>
+#include <stdexcept>
 
-// XRT includes
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-inline uint64_t nucl_encode(char c) {
-    switch(c) {
-        case 'A': return 0;
-        case 'C': return 1;
-        case 'G': return 2;
-        case 'T': return 3;
-        default:  return 0; // ignore N ou autres caractères
-    }
-}
 
-// === Fonction pour lire une séquence depuis un fichier FASTA ===
-std::string read_fasta(const std::string& filename) {
+std::vector<std::string> read_fasta_all(const std::string& filename) {
     std::ifstream infile(filename);
     if (!infile.is_open()) {
         throw std::runtime_error("Impossible d'ouvrir le fichier FASTA : " + filename);
     }
 
+    std::vector<std::string> sequences;
     std::string line;
-    std::string sequence;
+    std::string current_seq;
+
     while (std::getline(infile, line)) {
-        if (line.empty()) continue;      // ignorer les lignes vides
-        if (line[0] == '>') continue;    // ignorer les entêtes
-        for (auto& c : line) {
-            char nuc = toupper(c);
-            if (nuc == 'A' || nuc == 'C' || nuc == 'G' || nuc == 'T') {
-                sequence.push_back(nuc);
+        if (line.empty()) continue;
+        if (line[0] == '>') {
+            if (!current_seq.empty()) {
+                sequences.push_back(std::move(current_seq));
+                current_seq.clear();
             }
-            // sinon ignorer (par ex. N)
+        } else {
+            for (char ch : line) {
+                char nuc = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                if (nuc == 'A' || nuc == 'C' || nuc == 'G' || nuc == 'T') {
+                    current_seq.push_back(nuc);
+                }
+            }
         }
     }
-    return sequence;
+    if (!current_seq.empty()) sequences.push_back(std::move(current_seq));
+    return sequences;
 }
 
-// === Fonction pour exécuter le kernel ===
-double run_krnl(xrt::device& device, xrt::kernel& krnl,
-    int bank_assign[3], const std::vector<uint64_t>& packed_seq,
-    size_t n) 
+inline uint64_t nucl_encode(char c) {
+    switch (c) {
+        case 'A': return 0;
+        case 'C': return 1;
+        case 'G': return 2;
+        case 'T': return 3;
+        default: return 0;
+    }
+}
+
+// === Kernel runner ===
+double run_krnl_reuse(xrt::device& device, xrt::kernel& krnl,
+    xrt::bo& bo_seq, xrt::bo& bo_hash, xrt::bo& bo_nMinizrs,
+    uint64_t* seq_map_ptr, uint64_t* hash_map_ptr, uint64_t* nmin_map_ptr,
+    const std::vector<uint64_t>& packed_seq, size_t n)
 {
     size_t input_size_bytes  = packed_seq.size() * sizeof(uint64_t);
     size_t n_smers           = (n >= 28) ? (n - 27) : 0; // S=28
     size_t output_size_bytes = n_smers * sizeof(uint64_t);
 
-    std::cout << "Allocation des buffers en mémoire globale...\n";
-    auto bo_seq      = xrt::bo(device, input_size_bytes, bank_assign[0]); 
-    auto bo_hash     = xrt::bo(device, output_size_bytes, bank_assign[1]); 
-    auto bo_nMinizrs = xrt::bo(device, sizeof(uint64_t), bank_assign[2]);  
+    // copy packed sequence into mapped pointer (only needed words)
+    std::memcpy(seq_map_ptr, packed_seq.data(), input_size_bytes);
 
-    auto seq_map  = bo_seq.map<uint64_t*>();
-    auto hash_map = bo_hash.map<uint64_t*>();
-    auto nmin_map = bo_nMinizrs.map<uint64_t*>();
+    // zero only the relevant portion of hash output
+    std::memset(hash_map_ptr, 0, output_size_bytes);
 
-    for (size_t i = 0; i < packed_seq.size(); i++)
-        seq_map[i] = packed_seq[i];
+    // clear count
+    *nmin_map_ptr = 0;
 
-    std::memset(hash_map, 0, output_size_bytes);
-    *nmin_map = 0;
-
+    // sync to device (only input and control BO if needed)
     bo_seq.sync(XCL_BO_SYNC_BO_TO_DEVICE);
     bo_nMinizrs.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-    auto kernel_start = std::chrono::high_resolution_clock::now();
-    auto run = krnl(bo_seq, n, bo_hash, bo_nMinizrs);
+    // launch kernel and measure kernel runtime only
+    auto t0 = std::chrono::high_resolution_clock::now();
+    auto run = krnl(bo_seq, static_cast<int>(n), bo_hash, bo_nMinizrs);
     run.wait();
-    auto kernel_end = std::chrono::high_resolution_clock::now();
+    auto t1 = std::chrono::high_resolution_clock::now();
 
     bo_hash.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     bo_nMinizrs.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-    std::cout << "Nombre de minimizers trouvés par le kernel = " << *nmin_map << std::endl;
-
-    std::chrono::duration<double> kernel_time = kernel_end - kernel_start;
+    std::chrono::duration<double> kernel_time = t1 - t0;
     return kernel_time.count();
 }
 
+// === Main ===
 int main(int argc, char* argv[]) {
     if (argc < 4) {
         std::cout << "Usage: " << argv[0] << " <xclbin_file> <device_id> <fasta_file>\n";
@@ -96,42 +100,78 @@ int main(int argc, char* argv[]) {
     int device_index = std::stoi(argv[2]);
     std::string fastaFile = argv[3];
 
-    std::cout << "Ouverture du device " << device_index << std::endl;
+    std::cout << "Device: " << device_index << "\nLoading xclbin: " << binaryFile << std::endl;
+
     auto device = xrt::device(device_index);
-
-    std::cout << "Chargement du fichier xclbin : " << binaryFile << std::endl;
     auto uuid = device.load_xclbin(binaryFile);
-
     auto krnl = xrt::kernel(device, uuid, "krnl_minimizer");
 
-    int bank_assign[3] = {0, 1, 2};
-
-    std::string sequence = read_fasta(fastaFile);
-    size_t n = sequence.size();
-    std::cout << "\n=== Test avec n=" << n << " bases ===" << std::endl;
-
-    if (n == 0) {
-        std::cerr << "Erreur : séquence vide après lecture du fichier FASTA !" << std::endl;
+    std::vector<std::string> sequences;
+    try {
+        sequences = read_fasta_all(fastaFile);
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::vector<uint8_t> sequence_bytes(n);
-    for (size_t i = 0; i < n; i++)
-        sequence_bytes[i] = sequence[i];
-
-    // 8 bases par uint64_t
-    size_t n_words = (n + 7) / 8;
-    std::vector<uint64_t> packed_seq(n_words, 0);
-
-    for (size_t i = 0; i < n; i++) {
-        size_t word_idx = i / 8;
-        size_t shift = 8 * (i % 8);
-        packed_seq[word_idx] |= static_cast<uint64_t>(sequence_bytes[i]) << shift;
+    if (sequences.empty()) {
+        std::cerr << "Aucune sequence trouvée dans le FASTA." << std::endl;
+        return EXIT_FAILURE;
     }
 
-    double kernel_time_in_sec = run_krnl(device, krnl, bank_assign, packed_seq, n);
+    size_t max_n = 0;
+    for (auto &s : sequences) if (s.size() > max_n) max_n = s.size();
+    size_t max_n_words = (max_n + 7) / 8;
+    size_t max_n_smers  = (max_n >= 28) ? (max_n - 27) : 0;
+    size_t max_input_bytes  = max_n_words * sizeof(uint64_t);
+    size_t max_output_bytes = max_n_smers * sizeof(uint64_t);
 
-    std::cout << "Temps d'exécution du kernel : " << kernel_time_in_sec << " s\n";
-    std::cout << "\nTest terminé avec succès." << std::endl;
+    std::cout << "Nombre de sequences lues : " << sequences.size() << "\n";
+    std::cout << "Taille maximale sequence : " << max_n << " bases\n";
+
+    
+    int arg_index_seq = 0;
+    int arg_index_hash = 2;
+    int arg_index_nmin = 3;
+
+    auto bo_seq = xrt::bo(device, max_input_bytes, XCL_BO_FLAGS_NONE, krnl.group_id(arg_index_seq));
+    auto bo_hash = xrt::bo(device, max_output_bytes, XCL_BO_FLAGS_NONE, krnl.group_id(arg_index_hash));
+    auto bo_nMinizrs = xrt::bo(device, sizeof(uint64_t), XCL_BO_FLAGS_NONE, krnl.group_id(arg_index_nmin));
+
+    auto seq_map_ptr = bo_seq.map<uint64_t*>();
+    auto hash_map_ptr = bo_hash.map<uint64_t*>();
+    auto nmin_map_ptr = bo_nMinizrs.map<uint64_t*>();
+
+    size_t seq_idx = 0;
+    for (const auto &sequence : sequences) {
+        size_t n = sequence.size();
+        size_t n_words = (n + 7) / 8;
+        size_t n_smers = (n >= 28) ? (n - 27) : 0;
+        size_t input_bytes = n_words * sizeof(uint64_t);
+        size_t output_bytes = n_smers * sizeof(uint64_t);
+
+        std::cout << "\n--- Sequence " << seq_idx << " : " << n << " bases ---\n";
+
+        std::vector<uint64_t> packed_seq(n_words, 0);
+        for (size_t i = 0; i < n; ++i) {
+            size_t word_idx = i / 8;
+            size_t shift = 8 * (i % 8);
+            packed_seq[word_idx] |= (static_cast<uint64_t>(static_cast<uint8_t>(sequence[i])) << shift);
+        }
+
+        double ktime = run_krnl_reuse(device, krnl,
+                                      bo_seq, bo_hash, bo_nMinizrs,
+                                      seq_map_ptr, hash_map_ptr, nmin_map_ptr,
+                                      packed_seq, n);
+
+        uint64_t nmin_found = *nmin_map_ptr;
+
+        std::cout << "Minimizers trouvés : " << nmin_found << "\n";
+        std::cout << "Temps kernel (s) : " << ktime << "\n";
+
+        ++seq_idx;
+    }
+
+    std::cout << "\nTraitement termine.\n";
     return 0;
 }
