@@ -8,12 +8,12 @@ PLATFORM  ?= xilinx_u280_gen3x16_xdma_1_202211_1
 HOST_ARCH := x86
 
 # Host source and executable
-HOST_SRC  = src/host.cpp
+HOST_SRC  = src/host_simple.cpp
 HOST_EXE  = host.exe
 
 # Kernel source and output
-KERNEL_SRC  = src/krnl_minimizer.cpp
-KERNEL_NAME = krnl_minimizer
+KERNEL_SRC  = src/krnl_hash_simple.cpp
+KERNEL_NAME = krnl_hash_simple
 XO_FILE     = $(KERNEL_NAME).xo
 XCLBIN      = $(KERNEL_NAME).$(TARGET).xclbin
 
@@ -40,7 +40,7 @@ $(XO_FILE): $(KERNEL_SRC)
 $(XCLBIN): $(XO_FILE)
 	$(VPP) -l -t $(TARGET) --platform $(PLATFORM) \
 		--kernel_frequency 300 \
-		--config krnl_minimizer.cfg \
+		--config krnl_hash_simple.cfg \
 		-o $@ $<
 
 # Build host only
