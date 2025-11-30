@@ -1,0 +1,34 @@
+s-mer [ 0] : hash 0x00288A66CD5F9859
+s-mer [ 1] : hash 0x002F2A1639A519F9
+s-mer [ 2] : hash 0x0005548FB5A9FBFB
+s-mer [ 3] : hash 0x0010821414FF15A3
+s-mer [ 4] : hash 0x001C438CFFD394E2
+s-mer [ 5] : hash 0x000C7D2C37AEA42A
+s-mer [ 6] : hash 0x000BFD05A876EBE2
+s-mer [ 7] : hash 0x001443964BB741CE
+s-mer [ 8] : hash 0x000ED969431F3D5B
+s-mer [ 9] : hash 0x0004EEF9B61B8DAF
+s-mer [10] : hash 0x00101038E3C5A51C
+s-mer [11] : hash 0x0028A5CB181ADEB1
+s-mer [12] : hash 0x004C31C06AF5000B
+s-mer [13] : hash 0x0018CE8F29E5F8FA
+s-mer [14] : hash 0x0007D21C5451D5EA
+s-mer [15] : hash 0x00272A178913D38D
+s-mer [16] : hash 0x0033BBB5EBC1BBD2
+s-mer [17] : hash 0x002782B39C951C32
+s-mer [18] : hash 0x00260D56A2156FF7
+s-mer [19] : hash 0x0015C0950DD890DE
+s-mer [20] : hash 0x0023DE4E31DB0E3A
+s-mer [21] : hash 0x0012CF3D472B8383
+s-mer [22] : hash 0x00086F09E7E636F3
+s-mer [23] : hash 0x00039630BA3272FE
+s-mer [24] : hash 0x0009F644A5164B4B
+s-mer [25] : hash 0x0019D897533C480E
+s-mer [26] : hash 0x0001925B0DAB01F5
+s-mer [27] : hash 0x0008BE46397E6550
+s-mer [28] : hash 0x00063BA6C979B223
+s-mer [29] : hash 0x00036E5949A13B48
+s-mer [30] : hash 0x000721175D59EE18
+s-mer [31] : hash 0x000954588AA68071
+s-mer [32] : hash 0x00184D8D3366B0A3
+s-mer [33] : hash 0x0005E0B2E9B6F976
