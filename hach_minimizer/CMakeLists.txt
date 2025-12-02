@@ -5,21 +5,42 @@ project(Minimizers LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Options globales Linux
-add_compile_options(-Wall -Wextra -Werror -O3)
+option(BUILD_LINUX_INTEL  "Build on Linux with INTEL processor" ON)  # JetSon Orin Nano (ENSSAT)
+option(BUILD_MACOS_ARM    "Build on macOs with ARM.  processor" OFF) # MACOS INTEL-Mx
 
-# March native si supporté
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-march=native HAS_MARCH_NATIVE)
-if (HAS_MARCH_NATIVE)
-    add_compile_options(-march=native)
+if(BUILD_LINUX_INTEL)
+    add_compile_options(-Wall -Wextra -Werror)
+    add_compile_options(-O3 -march=native -mtune=native)
+    add_compile_options(-fopenmp)
+    add_link_options   (-fopenmp)
 endif()
 
+if(BUILD_MACOS_ARM)
+    # TO HAVE A NATIVE OPENMP SUPPORT
+    SET(CMAKE_C_COMPILER   /opt/homebrew/opt/llvm/bin/clang)
+    SET(CMAKE_CXX_COMPILER /opt/homebrew/opt/llvm/bin/clang++)
+    add_compile_options(-Wall -Wextra)
+    add_compile_options(-O3 -mcpu=native -mtune=native)
+    add_compile_options(-fopenmp)
+    add_link_options   (-fopenmp)
+endif()
+
+
+
+# Options globales Linux
+
+# March native si supporté
+#include(CheckCXXCompilerFlag)
+#check_cxx_compiler_flag(-march=native HAS_MARCH_NATIVE)
+#if (HAS_MARCH_NATIVE)
+#    add_compile_options(-march=native)
+#endif()
+
 # Filesystem obligatoire
-link_libraries(stdc++fs)
+#link_libraries(stdc++fs)
 
 # OpenMP
-find_package(OpenMP REQUIRED)
+#find_package(OpenMP REQUIRED)
 
 # ---- LIBRAIRIE INTERFACE commune ----
 add_library(common_interface INTERFACE)
@@ -31,34 +52,34 @@ target_include_directories(common_interface INTERFACE
 
 # ---- EXEC MONO ----
 add_executable(minimizer_mono
-    test/main_mono.cpp
-    src/hach_minimizer_mono.cpp
+    ../test/main_mono.cpp
+    ../src/hach_minimizer_mono.cpp
 )
 target_link_libraries(minimizer_mono PRIVATE common_interface)
 
 # ---- EXEC MULTI (OpenMP) ----
 add_executable(minimizer_multi
-    test/main_multi.cpp
-    src/hach_minimizer_multi.cpp
+    ../test/main_multi.cpp
+    ../src/hach_minimizer_multi.cpp
 )
-target_link_libraries(minimizer_multi PRIVATE 
-    common_interface
-    OpenMP::OpenMP_CXX
-)
+#target_link_libraries(minimizer_multi PRIVATE 
+#    common_interface
+#    OpenMP::OpenMP_CXX
+#)
 
 # ---- EXEC HLS ----
-add_executable(minimizer_hls
-    test/main_hls.cpp
-    hls/hach_minimizer_hls.cpp
-)
-target_link_libraries(minimizer_hls PRIVATE common_interface)
-target_compile_options(minimizer_hls PRIVATE -Wno-sign-compare -Wno-conversion)
+#add_executable(minimizer_hls
+#    ../test/main_hls.cpp
+#    ../hls/hach_minimizer_hls.cpp
+#)
+#target_link_libraries(minimizer_hls PRIVATE common_interface)
+#target_compile_options(minimizer_hls PRIVATE -Wno-sign-compare -Wno-conversion)
 
 # ---- Génération des données ----
 add_executable(generate_minimizers dataset/main_data.cpp)
 target_link_libraries(generate_minimizers PRIVATE 
     common_interface
-    OpenMP::OpenMP_CXX
+    #OpenMP::OpenMP_CXX
 )
 
 # ---- TESTS ----
