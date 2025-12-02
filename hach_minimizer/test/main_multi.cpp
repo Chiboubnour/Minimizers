@@ -338,6 +338,7 @@ int main(int argc, char* argv[])
     double hashes_per_sec = total_hashes / time_avg;
 
     const int    mHash = minimizers.size() / 1e6;
+    const int    Mbytes = static_cast<int>(minimizers.size() * sizeof(uint64_t) / (1024.0 * 1024.0));
     const double dHash = (hashes_per_sec / 1e6);
     std::cout << "#(II) Final results" << std::endl;
     std::cout << "#(II) - #of hash       : " <<  minimizers.size()                     / (1024.0 * 1024.0) << " Mhash" << std::endl;
@@ -349,6 +350,8 @@ int main(int argc, char* argv[])
     std::cout << "#(II) - Temps médian   : " << time_median << " s" << std::endl;
     std::cout << "#(II) - Débit          : " << dHash << " M hash/s" << std::endl;
 
-    printf("%4d %1.6f %1.6f %1.6f %1.6f %7.1f\n", mHash, time_avg, time_min, time_max, time_median, dHash);
+    printf("%4d %4d  %1.6f %1.6f %1.6f %1.6f %7.1f\n",
+        Mbytes, mHash, time_avg, time_min, time_max, time_median, dHash);
+        
     return EXIT_SUCCESS;
 }
