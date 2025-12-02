@@ -79,7 +79,7 @@ void read_uint64_t_file(
     //
     //
     i_buffer.resize( nCases );
-    const int nBytes = nCases * sizeof(uint64_t);
+    size_t nBytes = nCases * sizeof(uint64_t);
     if ( !file.read(reinterpret_cast<char*>(i_buffer.data()), nBytes) )
     {
         std::cout << "(EE) An error happens during the data reading" << std::endl;
