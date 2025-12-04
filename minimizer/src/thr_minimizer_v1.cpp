@@ -18,10 +18,7 @@ void thread_reader(
         uint64_t word = packed_sequence[i];
         for (int j = 0; j < 8; j++) {
             char c = word & 0xFF;
-            if (c == 0) {
-                stop = true;
-                break;
-            }
+         
             stream_o.write(c);
             word >>= 8;
         }
