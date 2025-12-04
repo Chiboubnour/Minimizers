@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstdio>
+#include <cinttypes>
 #include <ap_int.h>
 
 void t_thread_minimizer_v2(
@@ -20,7 +21,7 @@ int main(int argc, char * argv[])
     printf(" Compilation date : %s %s\n", __DATE__, __TIME__);
     printf("=====================================\n");
 
-    std::string i_file ;
+    std::string i_file;
     std::string o_file = "result.txt";
 
     int s = 19;
@@ -28,7 +29,9 @@ int main(int argc, char * argv[])
 
     bool verbose = true;
 
-
+    // ----------------------------------
+    // Parse arguments
+    // ----------------------------------
     for (int i = 1; i < argc; i++)
     {
         const std::string argvi = argv[i];
@@ -64,6 +67,12 @@ int main(int argc, char * argv[])
         }
     }
 
+    if (i_file.empty())
+    {
+        printf("(EE) No input file provided (-i)\n");
+        return EXIT_FAILURE;
+    }
+
     // ----------------------------------
     // Read input sequence
     // ----------------------------------
@@ -78,14 +87,14 @@ int main(int argc, char * argv[])
     else
     {
         printf("(EE) Impossible to open input file (%s)\n", i_file.c_str());
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     const int n = nucl.size();
     if (n == 0)
     {
-        printf("(EE) No data were loaded !\n");
-        exit(EXIT_FAILURE);
+        printf("(EE) No data were loaded!\n");
+        return EXIT_FAILURE;
     }
 
     const int n_smers = n - s + 1;
@@ -99,7 +108,7 @@ int main(int argc, char * argv[])
     printf("============================\n");
 
     // ----------------------------------
-    // Allocation large enough
+    // 
     // ----------------------------------
     ap_uint<64>* tab_hash = new ap_uint<64>[n_smers];
     ap_uint<64> nMinizrs = 0;
@@ -115,33 +124,33 @@ int main(int argc, char * argv[])
         &nMinizrs
     );
 
-    printf("\n✅ REAL number of minimizers found : %llu\n\n",
-           (unsigned long long) nMinizrs.to_uint64());
+    uint64_t total = nMinizrs.to_uint64();
 
-  
-    if (verbose && nMinizrs > 0)
+    printf("\n✅ REAL number of minimizers found: %" PRIu64 "\n\n", total);
+
+ 
+    if (verbose && total > 0)
     {
-        uint64_t total = nMinizrs.to_uint64();
+        const int show = 5;
+        int first_count = (total < show) ? total : show;
+        int last_count  = (total > show) ? show : 0;
 
-        int first_count = (total < 5) ? total : 5;
-        int last_count  = (total < 5) ? 0 : 5;
-
-        printf("----- First %d minimizers -----\n", first_count);
+        printf("-------- First %d minimizers --------\n", first_count);
         for (int i = 0; i < first_count; i++)
         {
-            printf("s-mer [%6d] : hash 0x%016llX\n",
+            printf("s-mer [%6d] : hash 0x%016" PRIx64 "\n",
                    i,
-                   (unsigned long long) tab_hash[i].to_uint64());
+                   tab_hash[i].to_uint64());
         }
 
         if (last_count > 0)
         {
-            printf("----- Last %d minimizers -----\n", last_count);
-            for (uint64_t i = total - 5; i < total; i++)
+            printf("-------- Last %d minimizers --------\n", last_count);
+            for (uint64_t i = total - last_count; i < total; i++)
             {
-                printf("s-mer [%6llu] : hash 0x%016llX\n",
-                       (unsigned long long)i,
-                       (unsigned long long)tab_hash[i].to_uint64());
+                printf("s-mer [%6" PRIu64 "] : hash 0x%016" PRIx64 "\n",
+                       i,
+                       tab_hash[i].to_uint64());
             }
         }
     }
@@ -151,13 +160,18 @@ int main(int argc, char * argv[])
 
     if (ff != nullptr)
     {
-        for (uint64_t i = 0; i < nMinizrs; ++i)
+        fprintf(ff, "Number of minimizers found: %" PRIu64 "\n\n", total);
+
+        for (uint64_t i = 0; i < total; ++i)
         {
-            fprintf(ff, "s-mer [%6llu] : hash 0x%016llX\n",
-                    (unsigned long long)i,
-                    (unsigned long long)tab_hash[i].to_uint64());
+            fprintf(ff,
+                    "s-mer [%6" PRIu64 "] : hash 0x%016" PRIx64 "\n",
+                    i,
+                    tab_hash[i].to_uint64());
         }
         fclose(ff);
+
+        printf("\n✅ Results successfully saved into: %s\n", o_file.c_str());
     }
     else
     {
