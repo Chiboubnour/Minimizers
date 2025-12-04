@@ -56,7 +56,7 @@ int t_minimizer_sequence(
         }
         if( stop ) break;
     }
-#if 1
+#if 0
     printf("=> sequence size %d\n", n_elements);
 #endif 
 
@@ -68,6 +68,7 @@ int t_minimizer_sequence(
     ap_uint<smer_size> buffer[window]; // nombre de m-mer/k-mer
     for(int x = 0; x < window; x += 1)
         buffer[x] = 0;
+
 
     //
     //
@@ -139,6 +140,7 @@ int t_minimizer_sequence(
         //
 
         if( ((i-smer+1) >= window) && (minz != last_mini) )
+
         {
 #if 0
             printf("=> storing s-mer [0x%16.16llX] because last_mini = [0x%16.16llX]\n", minz.to_uint64(), last_mini.to_uint64());
@@ -239,9 +241,7 @@ int t_minimizer_sequence(
 int t_minimizer_v1_for_synthesis(
     const uint64_t* packed_sequence,
     const int s,
-/*  ap_uint<64>* tab_smers,*/
-    ap_uint<64>* tab_hash/*,
-    ap_uint<64>* tab_occu*/
+    ap_uint<64>* tab_hash
 ) {
         return t_minimizer_sequence<7,4>(packed_sequence, s, tab_hash/*, tab_occu*/);
 }
