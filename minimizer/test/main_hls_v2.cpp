@@ -136,7 +136,8 @@ int main(int argc, char * argv[])
     );
 
 
-
+        printf("\n✅ REAL number of minimizers found : %llu\n\n",
+        (unsigned long long) nMinizrs.to_uint64());
         uint64_t total = nMinizrs.to_uint64();
 
         int first_count = (total < 5) ? total : 5;
@@ -150,16 +151,15 @@ int main(int argc, char * argv[])
                    (unsigned long long) tab_hash[i].to_uint64());
         }
 
-        if (last_count > 0)
+        
+        printf("----- Last %d minimizers -----\n", last_count);
+        for (uint64_t i = total - 5; i < total; i++)
         {
-            printf("----- Last %d minimizers -----\n", last_count);
-            for (uint64_t i = total - 5; i < total; i++)
-            {
                 printf("s-mer [%6llu] : hash 0x%016llX\n",
                        (unsigned long long)i,
                        (unsigned long long)tab_hash[i].to_uint64());
-            }
         }
+        
     
 
    
