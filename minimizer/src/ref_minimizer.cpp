@@ -36,7 +36,7 @@ int t_minimizer_v1(
                 break;
             }
 
-            char c = word & 0xFF; // octet de droite
+            char c = word & 0xFF; 
 
             if(c == 0){
                 stop = true;
