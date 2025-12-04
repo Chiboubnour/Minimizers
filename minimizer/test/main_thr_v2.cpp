@@ -1,80 +1,59 @@
-#include <vector>
-#include <string>
 #include <iostream>
-#include <limits>
+#include <fstream>
+#include <string>
+#include <cstdlib>
 #include <cstdio>
-#include <cstring> 
-#include <fstream> 
-#include <inttypes.h>
-
-#include "ap_int.h"
+#include <ap_int.h>
 
 void t_thread_minimizer_v2(
-    const uint64_t* packed_sequence,
-    const int s,
-    const int w,
+    const uint64_t* seq,
+    int s,
+    int w,
     ap_uint<64>* tab_hash,
     ap_uint<64>* nMinizrs
 );
 
 int main(int argc, char * argv[])
 {
-    printf("# \n");
-    printf("# \n");
-    printf("# Minimizer test   : %s\n", __FILE__);
-    printf("# Compilation date : %s %s\n", __DATE__, __TIME__);
-    printf("# \n");
+    printf("=====================================\n");
+    printf(" Minimizer test   : %s\n", __FILE__);
+    printf(" Compilation date : %s %s\n", __DATE__, __TIME__);
+    printf("=====================================\n");
 
-    std::string i_file = "./dataset/b64/test_64.nuc";
+    std::string i_file ;
     std::string o_file = "result.txt";
 
     int s = 19;
     int w = 16;
 
-    bool  verbose = true;
+    bool verbose = true;
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    printf("# Run command:\n# ");
-    for (int i = 0; i < argc; i += 1)
-    {
-        printf("%s ", argv[i]);
-    }
-    printf("\n");
-    //
-    //
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    
     for (int i = 1; i < argc; i++)
     {
         const std::string argvi = argv[i];
-        if (argvi == "--input" || argvi == "--ifile" || argvi == "-i" )
+
+        if (argvi == "--input" || argvi == "--ifile" || argvi == "-i")
         {
-            i_file = argv[i + 1];
-            i += 1;
+            i_file = argv[++i];
         }
-        else if (argvi == "--output" || argvi == "--ofile" || argvi == "-o" )
+        else if (argvi == "--output" || argvi == "--ofile" || argvi == "-o")
         {
-            o_file = argv[i + 1];
-            i += 1;
+            o_file = argv[++i];
         }
-        else if (argvi == "--window" || argvi == "-w" )
+        else if (argvi == "--window" || argvi == "-w")
         {
-            w = std::atoi(argv[i + 1]);
-            i += 1;
+            w = std::atoi(argv[++i]);
         }
-        else if (argvi == "--smer" || argvi == "-s" )
+        else if (argvi == "--smer" || argvi == "-s")
         {
-            s = std::atoi(argv[i + 1]);
-            i += 1;
+            s = std::atoi(argv[++i]);
         }
-        else if (std::string(argv[i]) == "--no-verbose")
+        else if (argvi == "--no-verbose")
         {
             verbose = false;
         }
-        else if (std::string(argv[i]) == "-verbose")
+        else if (argvi == "--verbose")
         {
             verbose = true;
         }
@@ -85,55 +64,108 @@ int main(int argc, char * argv[])
         }
     }
 
+    // ----------------------------------
+    // Read input sequence
+    // ----------------------------------
     std::string nucl;
-    std::ifstream ii( i_file );
-    if( ii.is_open() == true ){
+    std::ifstream ii(i_file);
+
+    if (ii.is_open())
+    {
         std::getline(ii, nucl);
         ii.close();
-    }else{
-        printf("(EE) Impossible to open input file (%s)\n", i_file.c_str() );
+    }
+    else
+    {
+        printf("(EE) Impossible to open input file (%s)\n", i_file.c_str());
         exit(EXIT_FAILURE);
     }
 
     const int n = nucl.size();
-    if( n == 0) {
+    if (n == 0)
+    {
         printf("(EE) No data were loaded !\n");
         exit(EXIT_FAILURE);
     }
 
     const int n_smers = n - s + 1;
-    const int n_minzr = 2 * n_smers / (w + 1);
+    const int n_minzr_est = 2 * n_smers / (w + 1);
 
-    printf("Taille de la sequence     : %d\n", n);
-    printf("Nombre de s=%d-mers       : %d\n", s, n_smers);
-    printf("Taille de la window.      : %d\n", w);
-    printf("Nombre de (%d) minimizers : %d\n", s, n_minzr);
+    printf("\n======== PARAMETERS ========\n");
+    printf("Sequence size         : %d\n", n);
+    printf("Number of s=%d-mers   : %d\n", s, n_smers);
+    printf("Window size           : %d\n", w);
+    printf("Estimated minimizers  : %d\n", n_minzr_est);
+    printf("============================\n");
 
-    ap_uint<64>* tab_hash = new ap_uint<64>[ n ];
+    // ----------------------------------
+    // Allocation large enough
+    // ----------------------------------
+    ap_uint<64>* tab_hash = new ap_uint<64>[n_smers];
+    ap_uint<64> nMinizrs = 0;
 
-    ap_uint<64> nMinizrs;
-    
+    // ----------------------------------
+    // HLS call
+    // ----------------------------------
     t_thread_minimizer_v2(
-        (const uint64_t*) nucl.c_str(),
-        s, w,
-        (ap_uint<64>*) tab_hash, &nMinizrs
+        (const uint64_t*)nucl.c_str(),
+        s,
+        w,
+        tab_hash,
+        &nMinizrs
     );
 
+    printf("\n✅ REAL number of minimizers found : %llu\n\n",
+           (unsigned long long) nMinizrs.to_uint64());
 
-    for (int i = 0; i < nMinizrs; ++i)
+  
+    if (verbose && nMinizrs > 0)
     {
-        printf("s-mer [%2d] : hash 0x%16.16llX\n", i, tab_hash[i].to_uint64());
+        uint64_t total = nMinizrs.to_uint64();
+
+        int first_count = (total < 5) ? total : 5;
+        int last_count  = (total < 5) ? 0 : 5;
+
+        printf("----- First %d minimizers -----\n", first_count);
+        for (int i = 0; i < first_count; i++)
+        {
+            printf("s-mer [%6d] : hash 0x%016llX\n",
+                   i,
+                   (unsigned long long) tab_hash[i].to_uint64());
+        }
+
+        if (last_count > 0)
+        {
+            printf("----- Last %d minimizers -----\n", last_count);
+            for (uint64_t i = total - 5; i < total; i++)
+            {
+                printf("s-mer [%6llu] : hash 0x%016llX\n",
+                       (unsigned long long)i,
+                       (unsigned long long)tab_hash[i].to_uint64());
+            }
+        }
     }
-   
+
+  
     FILE* ff = fopen(o_file.c_str(), "w");
-    for (int i = 0; i < nMinizrs; ++i)
+
+    if (ff != nullptr)
     {
-        fprintf(ff, "s-mer [%2d] : hash 0x%16.16llX\n", i, tab_hash[i].to_uint64());
+        for (uint64_t i = 0; i < nMinizrs; ++i)
+        {
+            fprintf(ff, "s-mer [%6llu] : hash 0x%016llX\n",
+                    (unsigned long long)i,
+                    (unsigned long long)tab_hash[i].to_uint64());
+        }
+        fclose(ff);
     }
-    fclose( ff );
+    else
+    {
+        printf("(EE) Cannot open output file %s\n", o_file.c_str());
+    }
 
     delete[] tab_hash;
 
+    printf("\n✅ DONE\n");
     return 0;
 }
-
