@@ -7,7 +7,6 @@
 #define SMERS_PER_CYCLE   8
 #define DEDUP_WINDOW_SIZE 16
 
-//------------------------------------ HASH
 template <int resu_size>
 inline ap_uint<resu_size> hash_u64_tpl(uint64_t key) {
     key = (~key + (key << 21));
@@ -20,18 +19,15 @@ inline ap_uint<resu_size> hash_u64_tpl(uint64_t key) {
     return (ap_uint<resu_size>)key;
 }
 
-//------------------------------------ ENCODAGE NUCLEOTIDE
 static inline uint8_t nucl_encode_v1_from_byte(uint8_t nucl) {
     return (uint8_t)((nucl >> 1) & 0x03);
 }
 
-//------------------------------------ MIN
 static inline ap_uint<SMER_SIZE> min_v1_u(ap_uint<SMER_SIZE> a,
                                            ap_uint<SMER_SIZE> b) {
     return (a < b) ? a : b;
 }
 
-//------------------------------------ READER
 static void cpu_thread_reader(
     const ap_uint<64>* packed_sequence,
     uint64_t n_bases,
@@ -55,7 +51,6 @@ static void cpu_thread_reader(
     }
 }
 
-//------------------------------------ PACK
 static void cpu_thread_reader_pack(
     const std::vector<uint8_t>& bases,
     std::vector<uint32_t>& out_packed24
@@ -79,7 +74,6 @@ static void cpu_thread_reader_pack(
     }
 }
 
-//------------------------------------ SMER + HASH
 static void cpu_thread_smer(
     const std::vector<uint32_t>& packed24,
     std::vector<uint64_t>& out_vhash
@@ -115,7 +109,6 @@ static void cpu_thread_smer(
     }
 }
 
-//------------------------------------ DEDUP (corrigé)
 static void cpu_thread_dedup(
     const std::vector<uint64_t>& vhash,
     std::vector<uint64_t>& out_minimizers,
@@ -138,7 +131,6 @@ static void cpu_thread_dedup(
     }
 }
 
-//------------------------------------ STORE
 static void cpu_thread_store(
     const std::vector<uint64_t>& minimizers,
     ap_uint<64>* tab_hash,
