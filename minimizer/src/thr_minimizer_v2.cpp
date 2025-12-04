@@ -120,7 +120,7 @@ void thread_store_v2(
 //
 //
 //
-#define DATA_DEPTH 512
+#define DATA_DEPTH 64
 //
 //
 //
