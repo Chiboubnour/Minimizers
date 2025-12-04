@@ -337,11 +337,11 @@ int main(int argc, char* argv[])
     double total_hashes   = static_cast<double>(minimizers.size());
     double hashes_per_sec = total_hashes / time_avg;
 
-    const int    mHash = minimizers.size() / 1e6;
+    const int    mHash  = minimizers.size() / (1024.0 * 1024.0);
     const int    Mbytes = static_cast<int>(minimizers.size() * sizeof(uint64_t) / (1024.0 * 1024.0));
-    const double dHash = (hashes_per_sec / 1e6);
+    const double dHash  = (hashes_per_sec / 1e6);
     std::cout << "#(II) Final results" << std::endl;
-    std::cout << "#(II) - #of hash       : " <<  minimizers.size()                     / (1024.0 * 1024.0) << " Mhash" << std::endl;
+    std::cout << "#(II) - #of hash      " << minimizers.size() / (1024.0 * 1024.0) << " Mhash" << std::endl;
     std::cout << "#(II) - #of bytes      : " << (minimizers.size() * sizeof(uint64_t)) / (1024.0 * 1024.0) << " Mbytes" << std::endl;
     std::cout << "#(II) - #exec. threads : " << nCores   << " core(s)" << std::endl;
     std::cout << "#(II) - Temps moyen    : " << time_avg << " s" << std::endl;
