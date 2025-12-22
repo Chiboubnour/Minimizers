@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cinttypes>
 #include <ap_int.h>
+#include "gz/reader/stream_gz_reader.hpp"
 
 void t_thread_minimizer_v2(
     const uint64_t* seq,
