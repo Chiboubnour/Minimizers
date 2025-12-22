@@ -1,227 +1,403 @@
-#include <vector>
-#include <string>
-#include <iostream>
-#include <limits>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <inttypes.h>
-#include <chrono>
+// ============================================================
+// Minimizer benchmark & validation tool (CPU reference)
+// Compatible with t_minimizer_sequence<s,w>() provided earlier
+// - Command-line interface
+// - FASTA / FASTA.gz input
+// - Statistics & performance metrics
+// ============================================================
+
 #include <algorithm>
-#include <numeric>
+#include <chrono>
+#include <cmath>
+#include <cinttypes>
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <numeric>
+#include <string>
+#include <vector>
 
-#include "ap_int.h"
+#include "gz/reader/stream_gz_reader.hpp"
 
+// ------------------------------------------------------------
+// Forward declaration of the reference minimizer (template)
+// ------------------------------------------------------------
 
-extern int t_minimizer_sequence(
-    const uint64_t* packed_sequence,
-    const int s,
-    const int w,
-    ap_uint<64>* tab_hash
+template <int s, int w>
+int t_minimizer_sequence(
+    const char* sequence,
+    int         n_bases,
+    uint64_t*   tab_hash
 );
 
-int main(int argc, char * argv[])
-{
-    // -------------------------
-    // Header
-    // -------------------------
-    printf("# \n");
-    printf("# Minimizer test   : %s\n", __FILE__);
-    printf("# Compilation date : %s %s\n", __DATE__, __TIME__);
-    printf("# \n");
+// ------------------------------------------------------------
+// Runtime wrapper (dispatch on (s,w))
+// ------------------------------------------------------------
 
+int run_minimizer(
+    const char* sequence,
+    int         n_bases,
+    int         s,
+    int         w,
+    uint64_t*   tab_hash
+)
+{
+    // Add cases here if you want to benchmark other (s,w)
+    if (s == 19 && w == 16)
+        return t_minimizer_sequence<19,16>(sequence, n_bases, tab_hash);
+
+    std::cerr << "(EE) Unsupported parameters: s=" << s
+              << " w=" << w << '\n';
+    std::exit(EXIT_FAILURE);
+}
+
+// ============================================================
+// Main
+// ============================================================
+
+int main(int argc, char* argv[])
+{
+    std::printf("# \n");
+    std::printf("# Minimizer benchmark : %s\n", __FILE__);
+    std::printf("# Compilation date    : %s %s\n", __DATE__, __TIME__);
+    std::printf("# \n");
+
+    // -------------------------
+    // Parameters (defaults)
+    // -------------------------
     std::string i_file;
     std::string o_file = "result.txt";
 
-    int s = 19; 
-    int w = 16;  
-    int nTests = 1;
-    bool verbose = true;
+    int  s        = 19;
+    int  w        = 16;
+    int  ntests   = 1;
+    bool verbose  = true;
 
-   
-    for (int i = 1; i < argc; i++)
-    {
-        const std::string argvi = argv[i];
+    uint64_t max_bases             = 0; // 0 = no limit
+    uint64_t total_bases_extracted = 0;
 
-        if (argvi == "--input" || argvi == "--ifile" || argvi == "-i")
-        {
-            i_file = argv[i + 1];
-            i++;
+    // -------------------------
+    // Argument parsing
+    // -------------------------
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if ((arg == "--input") || (arg == "--ifile") || (arg == "-i")) {
+            i_file = argv[++i];
         }
-        else if (argvi == "--output" || argvi == "--ofile" || argvi == "-o")
-        {
-            o_file = argv[i + 1];
-            i++;
+        else if ((arg == "--output") || (arg == "--ofile") || (arg == "-o")) {
+            o_file = argv[++i];
         }
-        else if (argvi == "--window" || argvi == "-w")
-        {
-            w = std::atoi(argv[i + 1]);
-            i++;
+        else if ((arg == "--window") || (arg == "-w")) {
+            w = std::atoi(argv[++i]);
         }
-        else if (argvi == "--smer" || argvi == "-s")
-        {
-            s = std::atoi(argv[i + 1]);
-            i++;
+        else if ((arg == "--smer") || (arg == "-s")) {
+            s = std::atoi(argv[++i]);
         }
-        else if (argvi == "--t" || argvi == "-t")
-        {
-            nTests = std::atoi(argv[i + 1]);
-            i++;
+        else if ((arg == "--ntests") || (arg == "-t")) {
+            ntests = std::atoi(argv[++i]);
         }
-        else if (argvi == "--no-verbose")
-        {
+        else if (arg == "--no-verbose") {
             verbose = false;
         }
-        else if (argvi == "-verbose")
-        {
+        else if (arg == "--verbose") {
             verbose = true;
         }
-        else
-        {
-            printf("(EE) Unknown argument: %s\n", argv[i]);
-            exit(EXIT_FAILURE);
+        else if ((arg == "--data") || (arg == "-d")) {
+            int mb = std::atoi(argv[++i]);
+            max_bases = static_cast<uint64_t>(mb) * 1024ULL * 1024ULL;
+        }
+        else {
+            std::printf("(EE) Unknown argument: %s\n", argv[i]);
+            return EXIT_FAILURE;
         }
     }
 
-    if (i_file.empty())
-    {
-        printf("(EE) No input file provided (-i <file>)\n");
-        exit(EXIT_FAILURE);
+    if (i_file.empty()) {
+        std::printf("(EE) No input file provided (-i)\n");
+        return EXIT_FAILURE;
+    }
+
+    if (ntests < 1) {
+        std::printf("(EE) ntests must be >= 1\n");
+        return EXIT_FAILURE;
+    }
+
+    constexpr int BLOCK_SIZE = 1024 * 1024; // bases per block
+
+    // -------------------------
+    // Block structure
+    // -------------------------
+    struct BlockData {
+        std::vector<char> sequence;
+        int               n_bases = 0;
+    };
+
+    std::vector<BlockData> blocks;
+    std::vector<uint64_t>  first_hashes;
+    std::vector<uint64_t>  last_hashes;
+    std::vector<double>    test_durations;
+
+    int nHashs_total = 0;
+
+    // -------------------------
+    // Read & prepare input
+    // -------------------------
+    auto read_and_prepare_data = [&]() -> bool {
+        std::vector<char> block_data;
+        block_data.reserve(BLOCK_SIZE);
+
+        total_bases_extracted = 0;
+        blocks.clear();
+
+        auto process_block = [&](std::vector<char>& block) {
+            if (block.size() < static_cast<size_t>(s)) {
+                block.clear();
+                return;
+            }
+            BlockData bd;
+            bd.sequence = std::move(block);
+            bd.n_bases  = static_cast<int>(bd.sequence.size());
+            blocks.push_back(std::move(bd));
+            block.clear();
+        };
+
+        auto process_line = [&](std::string& line) {
+            if (line.empty() || line[0] == '>') return;
+
+            line.erase(
+                std::remove_if(line.begin(), line.end(), ::isspace),
+                line.end()
+            );
+
+            for (char c : line) {
+                if (max_bases > 0 && total_bases_extracted >= max_bases) {
+                    process_block(block_data);
+                    return;
+                }
+
+                block_data.push_back(c);
+                ++total_bases_extracted;
+
+                if (static_cast<int>(block_data.size()) >= BLOCK_SIZE) {
+                    process_block(block_data);
+                }
+            }
+        };
+
+        // --- Open input (supports .gz) ---
+        if (i_file.size() >= 3 && i_file.substr(i_file.size() - 3) == ".gz") {
+            stream_gz_reader gz(i_file);
+            if (!gz.is_open()) {
+                std::printf("(EE) Cannot open gz %s\n", i_file.c_str());
+                return false;
+            }
+
+            std::vector<char> buf(64 * 1024);
+            std::string       partial;
+            partial.reserve(1024);
+
+            while (!gz.is_eof()) {
+                int r = gz.read(buf.data(), 1, static_cast<int>(buf.size()));
+                if (r <= 0) break;
+
+                partial.append(buf.data(), r);
+                size_t pos = 0;
+
+                while (true) {
+                    size_t nl = partial.find('\n', pos);
+                    if (nl == std::string::npos) {
+                        partial = partial.substr(pos);
+                        break;
+                    }
+
+                    std::string line = partial.substr(pos, nl - pos);
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    process_line(line);
+                    pos = nl + 1;
+                }
+            }
+
+            if (!partial.empty()) process_line(partial);
+            gz.close();
+        }
+        else {
+            std::ifstream ifs(i_file);
+            if (!ifs.is_open()) {
+                std::printf("(EE) Cannot open %s\n", i_file.c_str());
+                return false;
+            }
+
+            std::string line;
+            while (std::getline(ifs, line)) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                process_line(line);
+            }
+            ifs.close();
+        }
+
+        if (!block_data.empty()) process_block(block_data);
+        return true;
+    };
+
+    if (!read_and_prepare_data()) return EXIT_FAILURE;
+
+    if (blocks.empty()) {
+        std::cerr << "(EE) No blocks prepared (input too small?). Exiting.\n";
+        return EXIT_FAILURE;
     }
 
     // -------------------------
-    // Read input sequence
+    // Benchmark loop
     // -------------------------
-    std::string nucl;
-    std::ifstream ii(i_file);
-    if (ii.is_open())
-    {
-        std::getline(ii, nucl);
-        ii.close();
-    }
-    else
-    {
-        printf("(EE) Impossible to open input file (%s)\n", i_file.c_str());
-        exit(EXIT_FAILURE);
-    }
+    test_durations.clear();
+    test_durations.reserve(ntests);
 
-    const int n = nucl.size();
-    const int n_smers     = n - s + 1;
-    const int n_minzr_est = 2 * n_smers / (w + 1);
+    int reference_hash_count = -1;
 
-    printf("\n======== PARAMETERS ========\n");
-    printf("Sequence size         : %d\n", n);
-    printf("Number of s=%d-mers   : %d\n", s, n_smers);
-    printf("Window size           : %d\n", w);
-    printf("Estimated minimizers  : %d\n", n_minzr_est);
-    printf("============================\n");
+    for (int t = 0; t < ntests; ++t) {
+        int current_test_hashes = 0;
+        std::vector<double> durations_us;
 
+        for (const auto& block : blocks) {
+            uint64_t* tab_hash = new uint64_t[block.n_bases];
 
-    ap_uint<64>* tab_hash = new ap_uint<64>[n];
+            auto start = std::chrono::high_resolution_clock::now();
+            int nHashs = run_minimizer(
+                block.sequence.data(),
+                block.n_bases,
+                s,
+                w,
+                tab_hash
+            );
+            auto end = std::chrono::high_resolution_clock::now();
 
-    std::vector<double> durations_us;
-    int nHashs = 0;
+            double us = static_cast<double>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    end - start
+                ).count()
+            );
 
-    for (int i = 0; i < nTests; ++i)
-    {
-        auto start = std::chrono::high_resolution_clock::now();
+            durations_us.push_back(us);
+            current_test_hashes += nHashs;
 
-        nHashs = t_minimizer_sequence(
-            (const uint64_t*) nucl.c_str(), 
-            s,
-            w,
-            tab_hash
+            if (t == 0) {
+                for (int j = 0;
+                     j < nHashs && static_cast<int>(first_hashes.size()) < 5;
+                     ++j) {
+                    first_hashes.push_back(tab_hash[j]);
+                }
+                for (int j = std::max(0, nHashs - 5); j < nHashs; ++j) {
+                    last_hashes.push_back(tab_hash[j]);
+                }
+            }
+
+            delete[] tab_hash;
+        }
+
+        double total_us = std::accumulate(
+            durations_us.begin(), durations_us.end(), 0.0
         );
+        double time_s = total_us / 1e6;
+        test_durations.push_back(time_s);
 
-        auto end = std::chrono::high_resolution_clock::now();
-
-        double time_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-
-        durations_us.push_back(time_us);
-
-        if (verbose && i == 0)
-        {
-            printf("\n--- 5 first minimizers ---\n");
-            for (int j = 0; j < nHashs && j < 5; ++j)
-            {
-                printf("s-mer [%2d] : hash 0x%016" PRIx64 "\n",
-                       j, tab_hash[j].to_uint64());
-            }
-
-            printf("\n--- 5 last minimizers ---\n");
-            for (int j = (nHashs > 5 ? nHashs - 5 : 0); j < nHashs; ++j)
-            {
-                printf("s-mer [%2d] : hash 0x%016" PRIx64 "\n",
-                       j, tab_hash[j].to_uint64());
-            }
+        if (t == 0) {
+            reference_hash_count = current_test_hashes;
+            nHashs_total         = reference_hash_count;
         }
-
+        else if (current_test_hashes != reference_hash_count) {
+            std::cerr << "Warning: inconsistent number of hashes in test "
+                      << t << ": expected " << reference_hash_count
+                      << ", got " << current_test_hashes << '\n';
+        }
     }
 
     // -------------------------
-    // Stats
+    // Statistics
     // -------------------------
-    std::sort(durations_us.begin(), durations_us.end());
-
-    double time_min    = durations_us.front() / 1e6;
-    double time_max    = durations_us.back()  / 1e6;
-    double time_median = durations_us[durations_us.size() / 2] / 1e6;
-    double time_avg    = std::accumulate(durations_us.begin(),
-                                         durations_us.end(), 0.0)
-                          / (durations_us.size() * 1e6);
-
-    double hashes_per_sec = nHashs / time_avg;
-    double dHash           = hashes_per_sec / 1e6;
-
-    const int mHash  = nHashs / (1024.0 * 1024.0);
-    const int Mbytes = (nHashs * sizeof(uint64_t)) / (1024.0 * 1024.0);
-
-    printf("\n✅ REAL number of minimizers found: %d\n", nHashs);
-
-    std::cout << "\n#(II) Final results\n";
-    std::cout << "#(II) - #of hash       : " << mHash   << " Mhash\n";
-    std::cout << "#(II) - #of bytes      : " << Mbytes << " Mbytes\n";
-    std::cout << "#(II) - Avg time       : " << time_avg    << " s\n";
-    std::cout << "#(II) - Min time       : " << time_min    << " s\n";
-    std::cout << "#(II) - Max time       : " << time_max    << " s\n";
-    std::cout << "#(II) - Median time    : " << time_median << " s\n";
-    std::cout << "#(II) - Throughput      : " << dHash << " M hash/s\n";
-
-    printf("\n%4d %4d  %1.6f %1.6f %1.6f %1.6f %7.1f\n",
-           Mbytes, mHash,
-           time_avg, time_min,
-           time_max, time_median,
-           dHash);
-
-    // -------------------------
-    // Write output file
-    // -------------------------
-    FILE* ff = fopen(o_file.c_str(), "w");
-    if (ff)
-    {
-        fprintf(ff, "5 first minimizers:\n");
-        for (int i = 0; i < nHashs && i < 5; ++i)
-        {
-            fprintf(ff, "s-mer [%2d] : hash 0x%016" PRIx64 "\n",
-                    i, tab_hash[i].to_uint64());
-        }
-
-        fprintf(ff, "\n5 last minimizers:\n");
-        for (int i = (nHashs > 5 ? nHashs - 5 : 0); i < nHashs; ++i)
-        {
-            fprintf(ff, "s-mer [%2d] : hash 0x%016" PRIx64 "\n",
-                    i, tab_hash[i].to_uint64());
-        }
-
-        fclose(ff);
-        printf("\n✅ Results saved to file: %s\n", o_file.c_str());
+    if (!test_durations.empty()) {
+        std::vector<double> stats;
+        if (ntests > 1)
+            stats.assign(test_durations.begin() + 1, test_durations.end());
+        else
+            stats = test_durations;
+    
+            if (!stats.empty()) {
+                std::sort(stats.begin(), stats.end());
+            
+                double min_time = stats.front();
+                double max_time = stats.back();
+                double sum_time = std::accumulate(stats.begin(), stats.end(), 0.0);
+                double avg_time = sum_time / static_cast<double>(stats.size());
+            
+                double var = 0.0;
+                for (double v : stats) var += (v - avg_time) * (v - avg_time);
+                var /= static_cast<double>(stats.size());
+            
+                double avg_hashes_per_sec = (avg_time > 0.0)
+                    ? static_cast<double>(nHashs_total) / avg_time
+                    : 0.0;
+            
+                double avg_bases_per_sec = (avg_time > 0.0)
+                    ? static_cast<double>(total_bases_extracted) / avg_time
+                    : 0.0;
+            
+                // ---- Detailed info ----
+                printf("\n=== Performance Analysis ===\n\n");
+                printf("Configuration:\n");
+                printf("  Input file:          %s\n", i_file.c_str());
+                printf("  Total bases:         %" PRIu64 "\n", total_bases_extracted);
+                printf("  Window size (w):     %d\n", w);
+                printf("  S-mer size (s):      %d\n", s);
+                printf("  Number of tests:     %d\n\n", ntests);
+            
+                printf("Results (on %zu runs):\n", stats.size());
+                printf("  Min time:            %.6f s\n", min_time);
+                printf("  Max time:            %.6f s\n", max_time);
+                printf("  Avg time:            %.6f s\n", avg_time);
+            
+                printf("Performance:\n");
+                printf("  Number of minimizers: %" PRIu64 "\n", nHashs_total);
+                printf("  Hash rate (avg):      %.3f Mhash/s\n", avg_hashes_per_sec / 1e6);
+                printf("  Base rate (avg):      %.3f Mbases/s\n\n", avg_bases_per_sec / 1e6);
+            
+                // ---- One-line summary ----
+                printf("SizeMB  nbases       t_moy       t_min        t_max       Mbases/s    NbMinz\n");
+                printf("%6.1f  %9" PRIu64 "  %10.6f  %10.6f  %10.6f  %10.3f  %10" PRIu64 "\n",
+                       static_cast<double>(total_bases_extracted)/(1024.0*1024.0),  // SizeMB
+                       total_bases_extracted,                                        // nbases
+                       avg_time,                                                      // t_moy
+                       min_time,                                                      // t_min
+                       max_time,                                                      // t_max
+                       avg_bases_per_sec/1e6,                                         // Mbases/s
+                       nHashs_total);                                                 // NbMinz
+            
+            
+                    }
     }
-    else
-    {
-        printf("(EE) Impossible to open output file (%s)\n", o_file.c_str());
+    
+    int first_count = std::min<int>(5, nHashs_total);
+    int last_count  = std::min<int>(5, nHashs_total);
+    uint64_t total  = nHashs_total;
+    
+    printf("\n----- First %zu minimizers -----\n", first_hashes.size());
+    for (size_t i = 0; i < first_hashes.size(); ++i) {
+        printf("s-mer [%6zu] : hash 0x%016llX\n",
+               i,
+               (unsigned long long)first_hashes[i]);
     }
-
-    delete[] tab_hash;
+    
+    printf("\n----- Last %zu minimizers -----\n", last_hashes.size());
+    for (size_t i = 0; i < last_hashes.size(); ++i) {
+        printf("s-mer [%6zu] : hash 0x%016llX\n",
+               i,
+               (unsigned long long)last_hashes[i]);
+    }
+    
+    std::printf("\n✅ Test completed successfully (output file: %s)\n",
+                o_file.c_str());
+    
     return EXIT_SUCCESS;
 }
+    
