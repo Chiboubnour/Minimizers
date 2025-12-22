@@ -2,18 +2,17 @@ cmake_minimum_required(VERSION 3.10)
 
 project(Minimizers VERSION 1.0 LANGUAGES CXX)
 
-# Options de configuration
+# Options
 option(ENABLE_HLS "Enable HLS-specific code" OFF)
 option(BUILD_TESTS "Build test executables" ON)
 
-# Configuration pour Linux
+# Configuration Linux
 if(UNIX AND NOT APPLE)
     set(LINUX TRUE)
     add_definitions(-DLINUX)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 endif()
 
-# Configuration du compilateur
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -22,49 +21,63 @@ add_compile_options(
     -Wall
     -Wextra
     -O2
-    -std=c++11
+    -std=c++17
     -I${CMAKE_SOURCE_DIR}/include
     -Wno-sign-compare
     -Wno-unused-parameter
-    #-Wno-deprecated-copy-with-user-provided-copy
 )
 
-
-# Inclure les répertoires nécessaires
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/hls
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/../tools/src/files  # pour stream_gz_reader
 )
 
-# Définition des fichiers sources
-set(COMMON_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/ref_minimizer.cpp
-    ${CMAKE_SOURCE_DIR}/src/thr_minimizer_v1.cpp
-    ${CMAKE_SOURCE_DIR}/hls/minimizer_v1.cpp
+# Bibliothèque zlib
+find_package(ZLIB REQUIRED)
+
+# --------------------------------------------------------------------
+# Fichier source pour stream_gz_reader
+# --------------------------------------------------------------------
+set(STREAM_GZ_READER_SRC
+    ${CMAKE_SOURCE_DIR}/../tools/src/files/gz/reader/stream_gz_reader.cpp
 )
 
-# Exécutable de référence
+# --------------------------------------------------------------------
+# Executables
+# --------------------------------------------------------------------
+
+# minimizer_ref
 add_executable(minimizer_ref
     ${CMAKE_SOURCE_DIR}/test/main_ref.cpp
     ${CMAKE_SOURCE_DIR}/src/ref_minimizer.cpp
+    ${STREAM_GZ_READER_SRC}   
 )
+target_link_libraries(minimizer_ref PRIVATE ${ZLIB_LIBRARIES})
+target_include_directories(minimizer_ref PRIVATE ${ZLIB_INCLUDE_DIRS})
 
-# Exécutable version threadée v1
+# minimizer_thr_v1
 add_executable(minimizer_thr_v1
     ${CMAKE_SOURCE_DIR}/test/main_thr_v1.cpp
     ${CMAKE_SOURCE_DIR}/src/thr_minimizer_v1.cpp
+    ${STREAM_GZ_READER_SRC}  
 )
+target_link_libraries(minimizer_thr_v1 PRIVATE ${ZLIB_LIBRARIES})
+target_include_directories(minimizer_thr_v1 PRIVATE ${ZLIB_INCLUDE_DIRS})
 
-# Exécutable version threadée v2 (si disponible)
+# minimizer_thr_v2
 if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_thr_v2.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/src/thr_minimizer_v2.cpp")
     add_executable(minimizer_thr_v2
         ${CMAKE_SOURCE_DIR}/test/main_thr_v2.cpp
         ${CMAKE_SOURCE_DIR}/src/thr_minimizer_v2.cpp
+        ${STREAM_GZ_READER_SRC} 
     )
+    target_link_libraries(minimizer_thr_v2 PRIVATE ${ZLIB_LIBRARIES})
+    target_include_directories(minimizer_thr_v2 PRIVATE ${ZLIB_INCLUDE_DIRS})
 endif()
 
-# Exécutable HLS v1 (si disponible)
+# HLS v1
 if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v1.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/hls/minimizer_v1.cpp")
     add_executable(minimizer_hls_v1
         ${CMAKE_SOURCE_DIR}/test/main_hls_v1.cpp
@@ -73,7 +86,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v1.cpp" AND EXISTS "${CMAKE_SOURCE_
     target_compile_definitions(minimizer_hls_v1 PRIVATE _PRAGMA_HLS_)
 endif()
 
-# Exécutable HLS v2 (si disponible)
+# HLS v2
 if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v2.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/hls/minimizer_v2.cpp")
     add_executable(minimizer_hls_v2
         ${CMAKE_SOURCE_DIR}/test/main_hls_v2.cpp
@@ -82,7 +95,6 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v2.cpp" AND EXISTS "${CMAKE_SOURCE_
     target_compile_definitions(minimizer_hls_v2 PRIVATE _PRAGMA_HLS_)
 endif()
 
-# Options de liaison
 foreach(target minimizer_ref minimizer_thr_v1 minimizer_thr_v2 minimizer_hls_v1 minimizer_hls_v2)
     if(TARGET ${target})
         target_link_libraries(${target} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
@@ -94,31 +106,31 @@ foreach(target minimizer_ref minimizer_thr_v1 minimizer_thr_v2 minimizer_hls_v1 
     endif()
 endforeach()
 
+# --------------------------------------------------------------------
 # Installation
+# --------------------------------------------------------------------
 install(TARGETS minimizer_ref minimizer_thr_v1 DESTINATION bin)
 
+# --------------------------------------------------------------------
 # Tests
+# --------------------------------------------------------------------
 if(BUILD_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/test")
     enable_testing()
     
-    # Test de base pour la version de référence
     add_test(NAME test_minimizer_ref
              COMMAND ${CMAKE_BINARY_DIR}/bin/minimizer_ref --input ${CMAKE_SOURCE_DIR}/dataset/b64/test_64.nuc -o ${CMAKE_BINARY_DIR}/test_ref_output.txt
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
     
-    # Test pour la version threadée
     add_test(NAME test_minimizer_thr_v1
              COMMAND ${CMAKE_BINARY_DIR}/bin/minimizer_thr_v1 --input ${CMAKE_SOURCE_DIR}/dataset/b64/test_64.nuc -o ${CMAKE_BINARY_DIR}/test_thr_output.txt
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
     
-    # Comparaison des sorties
     add_test(NAME compare_outputs
              COMMAND ${CMAKE_COMMAND} -E compare_files
              ${CMAKE_BINARY_DIR}/test_ref_output.txt
              ${CMAKE_BINARY_DIR}/test_thr_output.txt)
 endif()
 
-# Message de fin
 message(STATUS "Configuration terminée. Pour compiler, exécutez 'make'")
 message(STATUS "Pour installer: make install")
 message(STATUS "Pour exécuter les tests: make test")
