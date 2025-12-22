@@ -268,5 +268,5 @@ void thr_minimizer_for_synthesis(
     ap_uint<64>* nMinizrs
 ) {
     // Use the same parameters as the reference implementation
-    thr_minimizer<31, 19>(packed_sequence, tab_hash, nMinizrs);
+    thr_minimizer<19, 16>(packed_sequence, tab_hash, nMinizrs);
 }
