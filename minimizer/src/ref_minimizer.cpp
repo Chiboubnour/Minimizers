@@ -1,247 +1,73 @@
-#include "functions.hpp"
-//
-//
-//
-///////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-template <int smer, int window>
+#include <cstdint>
+#include <vector>
+#include <algorithm>
+
+
+static inline uint64_t nucl_encode(char c) {
+    return (c >> 1) & 0x3ULL;
+}
+
+
+template<int S>
+inline uint64_t hash_u64(uint64_t key) {
+    key = (~key + (key << 21));
+    key ^= key >> 24;
+    key = ((key + (key << 3)) + (key << 8));
+    key ^= key >> 14;
+    key = ((key + (key << 2)) + (key << 4));
+    key ^= key >> 28;
+    key = (key + (key << 31));
+    return key;
+}
+
+
+template<int S, int W>
 int t_minimizer_sequence(
-    const uint64_t* packed_sequence,
-    ap_uint<64> n,
-    ap_uint<64>* tab_hash//,
-//    ap_uint<64>* tab_occu
+    const char* seq,
+    int n_bases,
+    uint64_t* out_hashes
 ) {
-#ifdef _PRAGMA_HLS_
-    #pragma HLS INTERFACE mode=m_axi     port=packed_sequence
-    #pragma HLS INTERFACE mode=s_axilite port=n
-    #pragma HLS INTERFACE mode=m_axi     port=tab_hash
-    #pragma HLS INTERFACE mode=s_axilite port=return      bundle=control
-#endif
-    constexpr int smer_size = 2 * smer;
-#if 0
-    printf("=> sequence %s\n", (char*)packed_sequence);
-#endif
-    //
-    // On realise la formation du premier kmer
-    //
+    constexpr int SMER_BITS = 2 * S;
+    constexpr uint64_t SMER_MASK = (SMER_BITS == 64) ? ~0ULL : ((1ULL << SMER_BITS) - 1);
 
-    ap_uint<smer_size> current_smer = 0;
-    ap_uint<smer_size> cur_inv_smer = 0;
+    uint64_t fwd = 0;
+    uint64_t rev = 0;
 
-    int cnt = 0;
-    //
-    //
-    ////////////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    bool stop = false;
-    int n_elements = 0;
-    char sequence[512];
-    for (int i = 0; i < 64; i++)
-    {
-#ifdef _PRAGMA_HLS_
-    #pragma HLS PIPELINE
-#endif
-        ap_uint<64> word = packed_sequence[i];
-        for (int j = 0; j < 8; ++j)
-        {
-            if( word.to_uchar() == 0 ){ // caractere nul indique la fin de la sequence
-                stop = true;            // de nucleotides
-                break;
-            }
-            sequence[n_elements++] = word;
-            word                   = word >> 8;
-        }
-        if( stop ) break;
-    }
-#if 0
-    printf("=> sequence size %d\n", n_elements);
-#endif 
+    std::vector<uint64_t> vhash;
+    vhash.reserve(n_bases);
 
-    //
-    //
-    ////////////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    ap_uint<smer_size> buffer[window]; // nombre de m-mer/k-mer
-    for(int x = 0; x < window; x += 1)
-        buffer[x] = 0;
+    // --- Generate canonical s-mer hashes ---
+    for (int i = 0; i < n_bases; ++i) {
+        uint64_t b = nucl_encode(seq[i]);
 
+        fwd = ((fwd << 2) | b) & SMER_MASK;
+        rev = (rev >> 2) | ((0x2 ^ b) << (SMER_BITS - 2));
 
-    //
-    //
-    ////////////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    for (int i = 0; i < smer - 1; i++)
-    {
-#ifdef _PRAGMA_HLS_
-    #pragma HLS PIPELINE
-#endif
-        current_smer <<= 2;
-        cur_inv_smer >>= 2;
-        const ap_uint<8>   nucl = sequence[i];                   // extract the ASCII char
-        const ap_uint<2> c_nucl = (nucl >> 1) & 0b11;            // convert to 2 bits representation
-        current_smer(          1,           0) = c_nucl;         // update the normal  smer
-        cur_inv_smer(smer_size-1, smer_size-2) = (0x2 ^ c_nucl); // update the inverse smer
-    }
-
-    ap_uint<smer_size>  last_mini = -1;
-    for(int i = smer - 1; i < n_elements; i += 1)
-    {
-#ifdef _PRAGMA_HLS_
-    #pragma HLS PIPELINE
-#endif
-        current_smer <<= 2;
-        cur_inv_smer >>= 2;
-        const ap_uint<8>   nucl = sequence[i];                   // extract the ASCII char
-        const ap_uint<2> c_nucl = (nucl >> 1) & 0b11;            // convert to 2 bits representation
-        current_smer(          1,           0) = c_nucl;         // update the normal  smer
-        cur_inv_smer(smer_size-1, smer_size-2) = (0x2 ^ c_nucl); // update the inverse smer
-
-        const ap_uint<smer_size> vmin  = min_v1<smer_size>( current_smer, cur_inv_smer);
-        const ap_uint<smer_size> vhash = hash_u64/*murmur_hash_64_v1*/<smer_size>( vmin );
-//      printf("-> min(%8.8llX, %8.8llX) = %8.8llX  => hash = 0x%16.16llX\n", current_smer.to_uint64(), cur_inv_smer.to_uint64(), vmin.to_uint64(), vhash.to_uint64());
-#if 0
-        show_x_mer(sequence + i - smer + 1, vhash.to_uint64(), smer, vmin.to_uint64());
-        printf("  - min(%8.8llX, %8.8llX) = %8.8llX  => hash = 0x%16.16llX\n", current_smer.to_uint64(), cur_inv_smer.to_uint64(), vmin.to_uint64(), vhash.to_uint64());
-#endif
-
-        //
-        // On calcule le minimiseur de la fenetre Z
-        //
-#if 0        
-        show_x_mer<smer_size>(buffer, z);
-#endif
-        ap_uint<64> minz = vhash;
-        for(int p = 0; p < window; p += 1) {
-            if( buffer[p] < minz )
-                minz = buffer[p];
-        }
-#if 0
-        show_x_mer(sequence + i - smer + 1, minz.to_uint64(), smer, vmin.to_uint64());
-#endif
-        //
-        // On fait vieillir la fenetre des valeurs de hash
-        //
-
-        for(int p = 0; p < window - 1; p += 1) {
-            buffer[p] = buffer[p+1];
-        }
-        buffer[window-1] = vhash;
-
-#if 0
-        show_x_mer<smer_size>(buffer, z);
-#endif
-        //
-        // On memorise apres avoir dé-dupliqué
-        //
-
-        if( ((i-smer+1) >= window) && (minz != last_mini) )
-
-        {
-#if 0
-            printf("=> storing s-mer [0x%16.16llX] because last_mini = [0x%16.16llX]\n", minz.to_uint64(), last_mini.to_uint64());
-#endif
-            last_mini        = minz;
-            tab_hash [cnt]   = minz;
-//          tab_occu [cnt]   = 1;
-            cnt++;
-#if 0
-            bool a = ((i-smer+1) >= z);
-            bool b = (minz != last_mini);
-            printf("a = %d et b = %d\n", a, b);
-#endif
-        }
-        else
-        {
-#if 0
-            printf("=> SKIPPING s-mer [0x%16.16llX] because last_mini = [0x%16.16llX]\n", minz.to_uint64(), last_mini.to_uint64());
-#endif
-#if 0
-            bool a = ((i-smer+1) >= z);
-            bool b = (minz != last_mini);
-            printf("a = %d et b = %d\n", a, b);
-#endif
-//          if(cnt != 0)
-//              tab_occu[cnt-1] += 1;
+        if (i + 1 >= S) {
+            uint64_t canon = std::min(fwd, rev);
+            uint64_t h = hash_u64<S>(canon) & SMER_MASK; 
+            vhash.push_back(h);
         }
     }
 
-    return cnt;
+    // --- Apply minimizer window ---
+    int out_cnt = 0;
+    uint64_t last_min = UINT64_MAX;
+
+    for (size_t i = 0; i + W <= vhash.size(); ++i) {
+        uint64_t minv = vhash[i];
+        for (int j = 1; j < W; ++j)
+            minv = std::min(minv, vhash[i + j]);
+
+        if (out_cnt == 0 || minv != last_min) {
+            out_hashes[out_cnt++] = minv;
+            last_min = minv;
+        }
+    }
+
+    return out_cnt;
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
-int t_minimizer_sequence(
-    const uint64_t* packed_sequence,
-    const int s,
-    const int w,
-    ap_uint<64>* tab_hash
-) {
-          if(s == 28 && w == 14) { return t_minimizer_sequence<28, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 27 && w == 14) { return t_minimizer_sequence<27, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 26 && w == 14) { return t_minimizer_sequence<26, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 25 && w == 14) { return t_minimizer_sequence<25, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 24 && w == 14) { return t_minimizer_sequence<24, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 23 && w == 14) { return t_minimizer_sequence<23, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 22 && w == 14) { return t_minimizer_sequence<22, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 21 && w == 14) { return t_minimizer_sequence<21, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 20 && w == 14) { return t_minimizer_sequence<20, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 19 && w == 14) { return t_minimizer_sequence<19, 14>(packed_sequence, s, tab_hash);
-    }else if(s == 28 && w == 16) { return t_minimizer_sequence<28, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 27 && w == 16) { return t_minimizer_sequence<27, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 26 && w == 16) { return t_minimizer_sequence<26, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 25 && w == 16) { return t_minimizer_sequence<25, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 24 && w == 16) { return t_minimizer_sequence<24, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 23 && w == 16) { return t_minimizer_sequence<23, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 22 && w == 16) { return t_minimizer_sequence<22, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 21 && w == 16) { return t_minimizer_sequence<21, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 20 && w == 16) { return t_minimizer_sequence<20, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 19 && w == 16) { return t_minimizer_sequence<19, 16>(packed_sequence, s, tab_hash);
-    }else if(s == 28 && w == 18) { return t_minimizer_sequence<28, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 27 && w == 18) { return t_minimizer_sequence<27, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 26 && w == 18) { return t_minimizer_sequence<26, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 25 && w == 18) { return t_minimizer_sequence<25, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 24 && w == 18) { return t_minimizer_sequence<24, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 23 && w == 18) { return t_minimizer_sequence<23, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 22 && w == 18) { return t_minimizer_sequence<22, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 21 && w == 18) { return t_minimizer_sequence<21, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 20 && w == 18) { return t_minimizer_sequence<20, 18>(packed_sequence, s, tab_hash);
-    }else if(s == 19 && w == 18) { return t_minimizer_sequence<19, 18>(packed_sequence, s, tab_hash);
 
-    } else {
-//#ifdef _DEBUG_
-        std::cerr << "Error: Unsupported s value: " << s << std::endl;
-        std::cerr << "Error: Unsupported s value: " << w << std::endl;
-        std::cerr << "Supported values are between 16 and 31." << std::endl;
-        std::cerr << "Please check the input parameters." << std::endl;
-        std::cerr << "Exiting..." << std::endl;
-//#endif
-        return -1;
-    }
-}
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
-int t_minimizer_v1_for_synthesis(
-    const uint64_t* packed_sequence,
-    const int s,
-    ap_uint<64>* tab_hash
-) {
-        return t_minimizer_sequence<7,4>(packed_sequence, s, tab_hash/*, tab_occu*/);
-}
+template int t_minimizer_sequence<19,16>(
+    const char*, int, uint64_t*
+);
