@@ -234,6 +234,5 @@ void thr_minimizer_for_synthesis_v2(
     ap_uint<64>* tab_hash,
     ap_uint<64>* nMinizrs
 ) {
-        //t_thread_minimizer(packed_sequence, s, tab_hash, nMinizrs);
-        thr_minimizer_v2<31, 19>(packed_sequence, s, tab_hash, nMinizrs);
+        thr_minimizer_v2<19, 16>(packed_sequence, s, tab_hash, nMinizrs);
 }
