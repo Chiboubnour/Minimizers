@@ -77,6 +77,17 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_thr_v2.cpp" AND EXISTS "${CMAKE_SOURCE_
     target_include_directories(minimizer_thr_v2 PRIVATE ${ZLIB_INCLUDE_DIRS})
 endif()
 
+# minimizer_thr_v3
+if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_thr_v3.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/src/thr_minimizer_v3.cpp")
+    add_executable(minimizer_thr_v3
+        ${CMAKE_SOURCE_DIR}/test/main_thr_v3.cpp
+        ${CMAKE_SOURCE_DIR}/src/thr_minimizer_v3.cpp
+        ${STREAM_GZ_READER_SRC} 
+    )
+    target_link_libraries(minimizer_thr_v3 PRIVATE ${ZLIB_LIBRARIES})
+    target_include_directories(minimizer_thr_v3 PRIVATE ${ZLIB_INCLUDE_DIRS})
+endif()
+
 # HLS v1
 if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v1.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/hls/minimizer_v1.cpp")
     add_executable(minimizer_hls_v1
@@ -95,7 +106,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_hls_v2.cpp" AND EXISTS "${CMAKE_SOURCE_
     target_compile_definitions(minimizer_hls_v2 PRIVATE _PRAGMA_HLS_)
 endif()
 
-foreach(target minimizer_ref minimizer_thr_v1 minimizer_thr_v2 minimizer_hls_v1 minimizer_hls_v2)
+foreach(target minimizer_ref minimizer_thr_v1 minimizer_thr_v2 minimizer_thr_v3 minimizer_hls_v1 minimizer_hls_v2)
     if(TARGET ${target})
         target_link_libraries(${target} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
         set_target_properties(${target} PROPERTIES
@@ -109,7 +120,7 @@ endforeach()
 # --------------------------------------------------------------------
 # Installation
 # --------------------------------------------------------------------
-install(TARGETS minimizer_ref minimizer_thr_v1 DESTINATION bin)
+install(TARGETS minimizer_ref minimizer_thr_v1 minimizer_thr_v2 minimizer_thr_v3 DESTINATION bin)
 
 # --------------------------------------------------------------------
 # Tests
