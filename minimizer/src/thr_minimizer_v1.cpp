@@ -27,10 +27,6 @@ void thread_reader(
     stream_o.write(0x00);
 }
 
-
-
-
-
 template <int smer_size>
 void thread_smer(
     hls::stream<uint8_t>& stream_i,
