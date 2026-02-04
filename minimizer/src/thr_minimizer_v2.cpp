@@ -2,16 +2,6 @@
 #include <hls_stream.h>
 #include <ap_int.h>
 
-//
-//
-//
-///////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-////#define _DEBUG_
-//
-//
 template <int smer_size = 19>
 void thread_reader_v2(
     const uint64_t* packed_sequence,
@@ -21,6 +11,7 @@ void thread_reader_v2(
         uint64_t word = packed_sequence[i];
         for (int j = 0; j < 8; j++) {
             uint8_t c = word & 0xFF;
+            
             if (c == 0) { stream_o.write(0x00); return; }
             stream_o.write(c);
             word >>= 8;
@@ -120,7 +111,7 @@ void thread_store_v2(
 //
 //
 //
-#define DATA_DEPTH 64
+#define DATA_DEPTH 1024
 //
 //
 //
