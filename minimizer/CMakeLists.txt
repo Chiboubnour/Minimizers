@@ -25,8 +25,10 @@ add_compile_options(
     -I${CMAKE_SOURCE_DIR}/include
     -Wno-sign-compare
     -Wno-unused-parameter
+    -Wno-int-in-bool-context
+    -Wno-maybe-uninitialized
+    -Wno-uninitialized
 )
-
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/hls
@@ -86,6 +88,17 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/test/main_thr_v3.cpp" AND EXISTS "${CMAKE_SOURCE_
     )
     target_link_libraries(minimizer_thr_v3 PRIVATE ${ZLIB_LIBRARIES})
     target_include_directories(minimizer_thr_v3 PRIVATE ${ZLIB_INCLUDE_DIRS})
+endif()
+
+# minimizer_thr_v3
+if(EXISTS "${CMAKE_SOURCE_DIR}/test/test.cpp" AND EXISTS "${CMAKE_SOURCE_DIR}/src/thr_minimizer_v3.cpp")
+    add_executable(test_thr_v3
+        ${CMAKE_SOURCE_DIR}/test/test.cpp
+        ${CMAKE_SOURCE_DIR}/src/thr_minimizer_v3.cpp
+        ${CMAKE_SOURCE_DIR}/test/catch2v3/catch_amalgamated.cpp
+    )
+    target_link_libraries(test_thr_v3 PRIVATE ${ZLIB_LIBRARIES})
+    target_include_directories(test_thr_v3 PRIVATE ${ZLIB_INCLUDE_DIRS})
 endif()
 
 # HLS v1
