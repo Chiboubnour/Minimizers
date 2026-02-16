@@ -18,8 +18,6 @@ static void reader_hls(
 
     ap_uint<64> n_words = (n_bases + 7) >> 3;
 
-    printf("Reader HLS: n_bases = %llu, n_words = %llu\n", (unsigned long long)n_bases, (unsigned long long)n_words);
-
     for (ap_uint<64> w = 0; w < n_words; w++) {
 
         ap_uint<64> word = packed_sequence[w];
@@ -30,13 +28,9 @@ static void reader_hls(
             valid = 8;
         }
 
-        printf("Reader HLS: word[%llu] = 0x%016llx, valid = %u\n", 
-               (unsigned long long)w, (unsigned long long)word, (unsigned int)valid);
-
         base_stream.write(word);
         base_valid.write(valid);
     }
-    printf("============================\n");
     base_stream.write(0);
     base_valid.write(0);
 }
@@ -52,7 +46,6 @@ static void adapter_hls(
     ap_uint<128> buffer = 0;
     ap_uint<8>   valid_count = 0;
 
-    printf("Adapter HLS: Start\n");
 
     while (true) {
 #pragma HLS PIPELINE II=1
@@ -66,8 +59,7 @@ static void adapter_hls(
                 ap_uint<64> out_word = buffer.range(63,0);
                 out_stream.write(out_word);
                 out_valid.write(valid_count);
-                printf("Adapter HLS: Write last word = 0x%016llx, valid = %u\n",
-                       (unsigned long long)out_word, (unsigned int)valid_count);
+           
             }
 
             // Fin de flux
@@ -86,8 +78,6 @@ static void adapter_hls(
             ap_uint<64> out_word = buffer.range(63,0);
             out_stream.write(out_word);
             out_valid.write(8);
-            printf("Adapter HLS: Write word = 0x%016llx, valid = 8\n",
-                   (unsigned long long)out_word);
 
             buffer >>= 64;
             valid_count -= 8;
@@ -113,7 +103,6 @@ void smer_thread_hls(
     ap_uint<8*S_BITS> buffer = 0;
     ap_uint<8> count_smers = 0;
 
-    printf("SMER Thread: Start\n");
 
     while (true) {
 #pragma HLS PIPELINE II=1
@@ -126,7 +115,6 @@ void smer_thread_hls(
                 out_stream.write(buffer);
                 out_valid.write(count_smers);
             }
-            // Signal de fin
             out_stream.write(0);
             out_valid.write(0);
             break;
@@ -156,7 +144,6 @@ void smer_thread_hls(
                              count_smers*S_BITS) = vhash;
                 count_smers++;
 
-                // Écriture seulement quand le buffer est plein
                 if (count_smers == 8) {
                     out_stream.write(buffer);
                     out_valid.write(8);
@@ -167,7 +154,6 @@ void smer_thread_hls(
         }
     }
 
-    // À la fin, flush éventuel des SMER restants
     if (count_smers > 0) {
         out_stream.write(buffer);
         out_valid.write(count_smers);
@@ -198,19 +184,11 @@ static void adapter_smer_hls(
 
         auto in_word  = base_stream.read();
         auto in_valid = base_valid.read();
-        printf("[ADAPTER] Buffer BEFORE = %s | valid_count = %u\n",
-               buffer.to_string(16).c_str(), (unsigned)valid_count);
 
         // ===== EOS =====
         if(in_valid == 0){
 
-            printf("[ADAPTER] >>> EOS detected <<<\n");
-
             if(valid_count > 0){
-
-                printf("[ADAPTER] Flush LAST buffer = %s | valid = %u\n",
-                       buffer.to_string(16).c_str(),
-                       (unsigned)valid_count);
 
                 out_stream.write(buffer);
                 out_valid.write(valid_count);
@@ -220,10 +198,6 @@ static void adapter_smer_hls(
 
             out_stream.write(0);
             out_valid.write(0);
-
-            printf("[ADAPTER] EOS forwarded downstream\n");
-            printf("[ADAPTER] TOTAL SMERS OUT = %u\n", total_out);
-
             break;
         }
 
@@ -234,18 +208,11 @@ static void adapter_smer_hls(
 
         valid_count += in_valid;
 
-        printf("[ADAPTER] Buffer AFTER concat = %s | valid_count = %u\n",
-               buffer.to_string(16).c_str(),
-               (unsigned)valid_count);
-
         // ===== PACKETS DE 8 =====
         while(valid_count >= 8){
 
             ap_uint<8*S_BITS> out_word =
                 buffer.range(8*S_BITS-1,0);
-
-            printf("[ADAPTER] Out word = %s | valid = 8\n",
-                   out_word.to_string(16).c_str());
 
             out_stream.write(out_word);
             out_valid.write(8);
@@ -255,9 +222,6 @@ static void adapter_smer_hls(
             buffer >>= 8*S_BITS;
             valid_count -= 8;
 
-            printf("[ADAPTER] Buffer AFTER shift = %s | valid_count = %u\n",
-                   buffer.to_string(16).c_str(),
-                   (unsigned)valid_count);
         }
     }
 }
@@ -278,7 +242,7 @@ void thread_dedup_v8(
 
     ap_uint<SMER> last = ~ap_uint<SMER>(0);
     int pos = 0;
-    int fill = 0; // nombre de slots valides dans la fenêtre
+    int fill = 0; 
 
     unsigned iter = 0;
     unsigned total_out = 0;
@@ -319,7 +283,6 @@ void thread_dedup_v8(
                     if(buf[j] < m) m = buf[j];
                 }
 
-                // Dedup
                 if(m != last){
                     last = m;
                     pout.range((ocnt+1)*SMER-1, ocnt*SMER) = m;
@@ -353,18 +316,16 @@ void thread_store_burst_v8(
         auto packed = in.read();
         auto valid  = valid_i.read();
 
-        // EOS
         if (valid == 0) break;
 
-        // Parcours de tous les SMER valides
         for (int i = 0; i < valid; i++) {
 #pragma HLS UNROLL
             ap_uint<SMER> v = packed.range((i+1)*SMER-1, i*SMER);
-            tab_hash[cnt++] = v;   // 1 SMER par slot 64 bits
+            tab_hash[cnt++] = v;   
         }
     }
 
-    *nElem = cnt;  // nombre exact de SMER stockés
+    *nElem = cnt; 
 }
 
 
