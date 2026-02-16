@@ -18,372 +18,251 @@ static void reader_hls(
 
     ap_uint<64> n_words = (n_bases + 7) >> 3;
 
-    for (ap_uint<64> w=0; w<n_words; w++) {
+    printf("Reader HLS: n_bases = %llu, n_words = %llu\n", (unsigned long long)n_bases, (unsigned long long)n_words);
+
+    for (ap_uint<64> w = 0; w < n_words; w++) {
 
         ap_uint<64> word = packed_sequence[w];
         ap_uint<8> valid;
-        if(w == n_words-1 && (n_bases & 7)) {
+        if (w == n_words - 1 && (n_bases & 7)) {
             valid = n_bases & 7; 
         } else {
             valid = 8;
         }
 
+        printf("Reader HLS: word[%llu] = 0x%016llx, valid = %u\n", 
+               (unsigned long long)w, (unsigned long long)word, (unsigned int)valid);
+
         base_stream.write(word);
         base_valid.write(valid);
     }
-
+    printf("============================\n");
     base_stream.write(0);
     base_valid.write(0);
 }
 
-#if 0
-static void adapter_bases_v8(
-    hls::stream<ap_uint<64>>& base_i,
-    hls::stream<ap_uint<8>>&  valid_i,
-    hls::stream<ap_uint<64>>& base_o,
-    hls::stream<ap_uint<8>>&  valid_o
-){
+static void adapter_hls(
+    hls::stream<ap_uint<64>>& base_stream,
+    hls::stream<ap_uint<8>>&  base_valid,
+    hls::stream<ap_uint<64>>& out_stream,
+    hls::stream<ap_uint<8>>&  out_valid
+) {
 #pragma HLS INLINE off
 
-    while(true){
+    ap_uint<128> buffer = 0;
+    ap_uint<8>   valid_count = 0;
+
+    printf("Adapter HLS: Start\n");
+
+    while (true) {
 #pragma HLS PIPELINE II=1
 
-        auto b = base_i.read();
-        auto v = valid_i.read();
+        ap_uint<64> in_word  = base_stream.read();
+        ap_uint<8>  in_valid = base_valid.read();
 
-        if(v==0){
-            base_o.write(0);
-            valid_o.write(0);
-            break;
-        }
-
-        base_o.write(b);
-        valid_o.write(v);
-    }
-}
-#else
-static void adapter_bases_v8(
-    hls::stream<ap_uint<64>>& base_i,
-    hls::stream<ap_uint<8>>&  valid_i,
-    hls::stream<ap_uint<64>>& base_o,
-    hls::stream<ap_uint<8>>&  valid_o
-){
-#pragma HLS INLINE off
-
-    while(true){
-#pragma HLS PIPELINE II=1
-
-        const ap_uint<64> b = base_i.read();
-        const ap_uint<8> v = valid_i.read();
-
-        printf("[adapter_bases_v8] Read word   = 0x%016llx, valid = 0x%02x\n",
-               (unsigned long long)b, (unsigned int)v);
-
-        if(v != 0xFF){
-            base_o.write(0);
-            valid_o.write(0);
-            printf("[adapter_bases_v8] End of stream, 0 written\n");
-            break;
-        }
-
-        base_o.write(b);
-        valid_o.write(v);
-
-        printf("[adapter_bases_v8] Written word = 0x%016llx, valid = 0x%02x\n",
-               (unsigned long long)b, (unsigned int)v);
-    }
-}
-#endif
-
-
-#if 0
-template<int SMER>
-void thread_smer_generator_v2(
-    hls::stream<ap_uint<64>>& base_i,
-    hls::stream<ap_uint<8>>&  valid_i,
-    hls::stream<ap_uint<8*SMER>>& smer_o,
-    hls::stream<ap_uint<8>>& valid_o
-){
-#pragma HLS INLINE off
-
-    constexpr int INNER = 2*SMER;
-
-    ap_uint<INNER> fwd = 0;
-    ap_uint<INNER> rev  = 0;
-    ap_uint<6> init     = 0;
-    bool ready          = false;
-
-    while(true){
-#pragma HLS PIPELINE II=1
-
-        auto bases = base_i.read();
-        auto valid = valid_i.read();
-
-        if(valid==0){
-            smer_o.write(0);
-            valid_o.write(0);
-            break;
-        }
-
-        ap_uint<8*SMER> pack = 0;
-        ap_uint<8> cnt = 0;
-
-        for(int i=0;i<8;i++){
-#pragma HLS UNROLL
-
-            if(!valid[i]) continue;
-
-            ap_uint<8> n = bases.range(8*i+7,8*i);
-            if(n==0) continue;
-
-            ap_uint<2> c = (n>>1)&3;
-
-            fwd <<= 2;
-            rev >>= 2;
-            fwd(1,0) = c;
-            rev(INNER-1,INNER-2) = 0x2 ^ c;
-
-            if(!ready){
-                init++;
-                if(init >= SMER-1) ready = true;
+        if (in_valid == 0) {
+            // Écrire les s-mers restants dans le buffer
+            if (valid_count > 0) {
+                ap_uint<64> out_word = buffer.range(63,0);
+                out_stream.write(out_word);
+                out_valid.write(valid_count);
+                printf("Adapter HLS: Write last word = 0x%016llx, valid = %u\n",
+                       (unsigned long long)out_word, (unsigned int)valid_count);
             }
 
-            if(ready){
-                auto vmin = (fwd<rev)?fwd:rev;
-                ap_uint<SMER> hv = hash_u64(vmin).range(SMER-1,0);
-
-                pack.range((cnt+1)*SMER-1,cnt*SMER) = hv;
-                cnt++;
-            }
+            // Fin de flux
+            out_stream.write(0);
+            out_valid.write(0);
+            break;
         }
 
-        if(cnt > 0){
-            smer_o.write(pack);
-            valid_o.write(cnt);
-        } else {
-            printf("[SMER_GEN] NO smer generated for this word\n");
+        // Ajouter le mot dans le buffer
+        ap_uint<128> shifted = (ap_uint<128>)in_word << (valid_count * 8);
+        buffer |= shifted;
+        valid_count += in_valid;
+
+        // Écrire tous les mots complets
+        while (valid_count >= 8) {
+            ap_uint<64> out_word = buffer.range(63,0);
+            out_stream.write(out_word);
+            out_valid.write(8);
+            printf("Adapter HLS: Write word = 0x%016llx, valid = 8\n",
+                   (unsigned long long)out_word);
+
+            buffer >>= 64;
+            valid_count -= 8;
         }
     }
 }
 
-#else
-template<int SMER>
-void thread_smer_generator_v2(
-    hls::stream<ap_uint<64>>& base_i,
-    hls::stream<ap_uint<8>>&  valid_i,
-    hls::stream<ap_uint<8*SMER>>& smer_o,
-    hls::stream<ap_uint<8>>& valid_o
-){
+template <int S_BASE>
+void smer_thread_hls(
+    hls::stream<ap_uint<64>>& base_stream,
+    hls::stream<ap_uint<8>>&  base_valid,
+    hls::stream<ap_uint<16*S_BASE>>& out_stream,
+    hls::stream<ap_uint<8>>&  out_valid
+) {
 #pragma HLS INLINE off
 
-    constexpr int INNER = 2*SMER; 
-    ap_uint<INNER> fwd = 0;      
-    ap_uint<INNER> rev = 0;      
-    ap_uint<6> filled = 0;          
+    constexpr int S_BITS = 2 * S_BASE;
 
-    while(true){
+    ap_uint<S_BITS> current_smer = 0;
+    ap_uint<S_BITS> cur_inv_smer = 0;
+    int base_count = 0;
+
+    ap_uint<8*S_BITS> buffer = 0;
+    ap_uint<8> count_smers = 0;
+
+    printf("SMER Thread: Start\n");
+
+    while (true) {
 #pragma HLS PIPELINE II=1
+        ap_uint<64> word  = base_stream.read();
+        ap_uint<8>  valid = base_valid.read();
 
-        auto bases = base_i.read();
-        auto valid = valid_i.read();
-
-        printf("[SMER_GEN] Read word: 0x%016llx valid=%u\n",
-               (unsigned long long)bases, (unsigned)valid);
-
-        if(valid == 0){               // fin du stream
-            printf("[SMER_GEN] EOS received\n");
-            smer_o.write(0);
-            valid_o.write(0);
+        if (valid == 0) {
+            // Écrire uniquement les SMER valides restants
+            if (count_smers > 0) {
+                out_stream.write(buffer);
+                out_valid.write(count_smers);
+            }
+            // Signal de fin
+            out_stream.write(0);
+            out_valid.write(0);
             break;
         }
 
-        ap_uint<8*SMER> pack = 0;     // buffer pour stocker les S-mers générés
-        ap_uint<8> cnt = 0;
+        for (int i = 0; i < valid; i++) {
+#pragma HLS UNROLL factor=1
+            uint8_t nucl = (word >> (8*i)) & 0xFF;
+            uint8_t c_nucl = (nucl >> 1) & 0x03;
 
-        for(int i=0; i<8; i++){
-#pragma HLS UNROLL
+            // Rolling forward
+            current_smer <<= 2;
+            current_smer(1,0) = c_nucl;
+            current_smer &= ((ap_uint<S_BITS>) - 1);
 
-            const ap_uint<8> n = bases.range(8*i+7, 8*i);
-            const ap_uint<2> c = (n >> 1) & 0x3;
-            if(n == 0){
-                printf("%s:%d : thread_smer_generator_v2[%d] n = %d and c = %d\n", __FILE__, __LINE__, i, n.to_int(), c.to_int());
-                continue;
-            }      
+            // Rolling reverse
+            cur_inv_smer >>= 2;
+            cur_inv_smer(S_BITS-1, S_BITS-2) = 0x2 ^ c_nucl;
 
-            // mise à jour des S-mers forward et reverse
-            fwd <<= 2;
-            fwd(1,0) = c;
-            rev >>= 2;
-            rev(INNER-1, INNER-2) = 0x2 ^ c;  // complément inversé
+            base_count++;
 
-            filled++;                   // base accumulée
+            if (base_count >= S_BASE) {
+                ap_uint<S_BITS> vmin  = min_v1<S_BITS>(current_smer, cur_inv_smer);
+                ap_uint<S_BITS> vhash = hash_u64<S_BITS>(vmin);
 
-            printf("  [SMER_GEN] base[%d]=%u encoded=%u fwd=0x%llx rev=0x%llx filled=%u\n",
-                   i, (unsigned)n, (unsigned)c,
-                   (unsigned long long)fwd,
-                   (unsigned long long)rev,
-                   (unsigned)filled);
+                buffer.range(count_smers*S_BITS + S_BITS-1,
+                             count_smers*S_BITS) = vhash;
+                count_smers++;
 
-            if(filled >= SMER){
-                ap_uint<INNER> vmin = (fwd < rev) ? fwd : rev;
-                ap_uint<SMER> hv = hash_u64<SMER>(vmin);  
-
-                pack.range(cnt*SMER + SMER -1, cnt*SMER) = hv;
-                cnt++;
-
-                printf("    [SMER_GEN] Generated S-mer %u: vmin=0x%llx hv=0x%llx\n",
-                       (unsigned)cnt,
-                       (unsigned long long)vmin,
-                       (unsigned long long)hv);
-            }
-        }
-
-        if(cnt > 0){
-            printf("[SMER_GEN] Writing %u S-mers\n", (unsigned)cnt);
-            smer_o.write(pack);
-            valid_o.write(cnt);
-        } else {
-            printf("[SMER_GEN] No S-mer generated for this word\n");
-        }
-    }
-}
-
-#endif
-
-#if 0
-template<int SMER>
-void adapter_smers_v8(
-    hls::stream<ap_uint<8*SMER>>& in,
-    hls::stream<ap_uint<8>>& valid_i,
-    hls::stream<ap_uint<8*SMER>>& out,
-    hls::stream<ap_uint<8>>& valid_o
-){
-#pragma HLS INLINE off
-
-    ap_uint<SMER> fifo[8];
-#pragma HLS ARRAY_PARTITION variable=fifo complete
-
-    ap_uint<4> fill=0;
-
-    while(true){
-#pragma HLS PIPELINE II=1
-
-        auto packed = in.read();
-        auto valid  = valid_i.read();
-
-        if(valid==0){
-
-            if(fill>0){
-                ap_uint<8*SMER> w=0;
-                for(int i=0;i<fill;i++){
-#pragma HLS UNROLL
-                    w.range((i+1)*SMER-1,i*SMER)=fifo[i];
-                }
-                out.write(w);
-                valid_o.write(fill);
-            }
-
-            out.write(0);
-            valid_o.write(0);
-            break;
-        }
-
-        for(int i=0;i<8;i++){
-#pragma HLS UNROLL
-
-            if(i<valid){
-                fifo[fill++] = packed.range((i+1)*SMER-1,i*SMER);
-
-                if(fill==8){
-                    ap_uint<8*SMER> w=0;
-                    for(int j=0;j<8;j++){
-#pragma HLS UNROLL
-                        w.range((j+1)*SMER-1,j*SMER)=fifo[j];
-                    }
-
-                    out.write(w);
-                    valid_o.write(8);
-                    fill=0;
+                // Écriture seulement quand le buffer est plein
+                if (count_smers == 8) {
+                    out_stream.write(buffer);
+                    out_valid.write(8);
+                    buffer = 0;
+                    count_smers = 0;
                 }
             }
         }
     }
+
+    // À la fin, flush éventuel des SMER restants
+    if (count_smers > 0) {
+        out_stream.write(buffer);
+        out_valid.write(count_smers);
+    }
 }
 
-#else
-template<int SMER>
-void adapter_smers_v8(
-    hls::stream<ap_uint<8*SMER>>& in,
-    hls::stream<ap_uint<8>>& valid_i,
-    hls::stream<ap_uint<8*SMER>>& out,
-    hls::stream<ap_uint<8>>& valid_o
-){
+
+template<int S_BITS>
+static void adapter_smer_hls(
+    hls::stream<ap_uint<8*S_BITS>>& base_stream,
+    hls::stream<ap_uint<8>>&        base_valid,
+    hls::stream<ap_uint<8*S_BITS>>& out_stream,
+    hls::stream<ap_uint<8>>&        out_valid
+)
+{
 #pragma HLS INLINE off
 
-    ap_uint<SMER> fifo[8];
-#pragma HLS ARRAY_PARTITION variable=fifo complete
+    ap_uint<8*S_BITS> buffer = 0;
+    ap_uint<8> valid_count = 0;
 
-    ap_uint<4> fill=0;
+    unsigned iter = 0;
+    unsigned total_out = 0;
 
     while(true){
 #pragma HLS PIPELINE II=1
 
-        auto packed = in.read();
-        auto valid  = valid_i.read();
+        iter++;
 
-        printf("[adapter_smers_v8] Read packed, valid=%u, fill=%u\n",
-               (unsigned)valid, (unsigned)fill);
+        auto in_word  = base_stream.read();
+        auto in_valid = base_valid.read();
+        printf("[ADAPTER] Buffer BEFORE = %s | valid_count = %u\n",
+               buffer.to_string(16).c_str(), (unsigned)valid_count);
 
-        if(valid==0){
+        // ===== EOS =====
+        if(in_valid == 0){
 
-            if(fill>0){
-                ap_uint<8*SMER> w=0;
+            printf("[ADAPTER] >>> EOS detected <<<\n");
 
-                for(int i=0;i<fill;i++){
-#pragma HLS UNROLL
-                    w.range((i+1)*SMER-1,i*SMER)=fifo[i];
-                }
+            if(valid_count > 0){
 
-                out.write(w);
-                valid_o.write(fill);
+                printf("[ADAPTER] Flush LAST buffer = %s | valid = %u\n",
+                       buffer.to_string(16).c_str(),
+                       (unsigned)valid_count);
 
-                printf("[EOS flush] fill=%u\n",(unsigned)fill);
+                out_stream.write(buffer);
+                out_valid.write(valid_count);
+
+                total_out += valid_count;
             }
 
-            out.write(0);
-            valid_o.write(0);
+            out_stream.write(0);
+            out_valid.write(0);
+
+            printf("[ADAPTER] EOS forwarded downstream\n");
+            printf("[ADAPTER] TOTAL SMERS OUT = %u\n", total_out);
+
             break;
         }
 
-        for(int i=0;i<valid;i++){
-#pragma HLS UNROLL
+        // ===== CONCAT =====
+        buffer.range((valid_count+in_valid)*S_BITS-1,
+                     valid_count*S_BITS) =
+            in_word.range(in_valid*S_BITS-1, 0);
 
-            fifo[fill++] = packed.range((i+1)*SMER-1,i*SMER);
+        valid_count += in_valid;
 
-            printf("  [fifo add] fill=%u\n",(unsigned)fill);
+        printf("[ADAPTER] Buffer AFTER concat = %s | valid_count = %u\n",
+               buffer.to_string(16).c_str(),
+               (unsigned)valid_count);
 
-            if(fill==8){
+        // ===== PACKETS DE 8 =====
+        while(valid_count >= 8){
 
-                ap_uint<8*SMER> w=0;
+            ap_uint<8*S_BITS> out_word =
+                buffer.range(8*S_BITS-1,0);
 
-                for(int j=0;j<8;j++){
-#pragma HLS UNROLL
-                    w.range((j+1)*SMER-1,j*SMER)=fifo[j];
-                }
+            printf("[ADAPTER] Out word = %s | valid = 8\n",
+                   out_word.to_string(16).c_str());
 
-                out.write(w);
-                valid_o.write(8);
+            out_stream.write(out_word);
+            out_valid.write(8);
 
-                printf("[FULL flush]\n");
+            total_out += 8;
 
-                fill=0;
-            }
+            buffer >>= 8*S_BITS;
+            valid_count -= 8;
+
+            printf("[ADAPTER] Buffer AFTER shift = %s | valid_count = %u\n",
+                   buffer.to_string(16).c_str(),
+                   (unsigned)valid_count);
         }
     }
 }
 
 
-#endif
 
 template<int WINDOW,int SMER>
 void thread_dedup_v8(
@@ -397,22 +276,21 @@ void thread_dedup_v8(
     ap_uint<SMER> buf[WINDOW];
 #pragma HLS ARRAY_PARTITION variable=buf complete
 
-    // Initialisation buffer avec valeur max (sentinelle)
-    for(int i=0;i<WINDOW;i++){
-#pragma HLS UNROLL
-        buf[i] = ~ap_uint<SMER>(0);
-    }
-
     ap_uint<SMER> last = ~ap_uint<SMER>(0);
     int pos = 0;
+    int fill = 0; // nombre de slots valides dans la fenêtre
+
+    unsigned iter = 0;
+    unsigned total_out = 0;
 
     while(true){
 #pragma HLS PIPELINE II=1
 
+        iter++;
+
         auto packed = in.read();
         auto valid  = valid_i.read();
 
-        // Fin de stream
         if(valid == 0){
             out.write(0);
             valid_o.write(0);
@@ -422,38 +300,35 @@ void thread_dedup_v8(
         ap_uint<8*SMER> pout = 0;
         ap_uint<8> ocnt = 0;
 
-        // ----------- traitement paquet -----------
         for(int i=0;i<valid;i++){
 #pragma HLS UNROLL
+            ap_uint<SMER> v = packed.range((i+1)*SMER-1, i*SMER);
 
-            ap_uint<SMER> v =
-                packed.range((i+1)*SMER-1, i*SMER);
-
-            // Mise à jour fenêtre circulaire
             buf[pos] = v;
+            pos = (pos+1)%WINDOW;
 
-            // Recherche minimizer
-            ap_uint<SMER> m = buf[0];
-            for(int j=1;j<WINDOW;j++){
-#pragma HLS UNROLL
-                if(buf[j] < m)
-                    m = buf[j];
+            if(fill < WINDOW) {
+                fill++; // remplir la fenêtre
             }
 
-            pos++;
-            if(pos == WINDOW)
-                pos = 0;
+            // Calculer le minimizer dès que fill >= WINDOW
+            if(fill >= WINDOW){
+                ap_uint<SMER> m = buf[0];
+                for(int j=1;j<WINDOW;j++){
+#pragma HLS UNROLL
+                    if(buf[j] < m) m = buf[j];
+                }
 
-            // Deduplication
-            if(m != last){
-                last = m;
-
-                pout.range((ocnt+1)*SMER-1, ocnt*SMER) = m;
-                ocnt++;
+                // Dedup
+                if(m != last){
+                    last = m;
+                    pout.range((ocnt+1)*SMER-1, ocnt*SMER) = m;
+                    ocnt++;
+                    total_out++;
+                }
             }
         }
 
-        // Écriture sortie si données
         if(ocnt > 0){
             out.write(pout);
             valid_o.write(ocnt);
@@ -465,42 +340,33 @@ void thread_dedup_v8(
 template<int SMER>
 void thread_store_burst_v8(
     hls::stream<ap_uint<8*SMER>>& in,
-    hls::stream<ap_uint<8>>& valid_i,
-    ap_uint<512>* tab_hash,
+    hls::stream<ap_uint<8>>&       valid_i,
+    ap_uint<64>* tab_hash,
     ap_uint<64>* nElem
 ){
 #pragma HLS INLINE off
 
-    ap_uint<64> cnt=0;
-    ap_uint<64> mem=0;
+    ap_uint<64> cnt = 0;
 
-    while(true){
+    while (true) {
 #pragma HLS PIPELINE II=1
-
         auto packed = in.read();
         auto valid  = valid_i.read();
 
-        if(valid==0) break;
+        // EOS
+        if (valid == 0) break;
 
-        ap_uint<512> w=0;
-
-        for(int i=0;i<valid;i++){
+        // Parcours de tous les SMER valides
+        for (int i = 0; i < valid; i++) {
 #pragma HLS UNROLL
-
-            ap_uint<64> v = 0;
-
-            v.range(SMER-1,0) =
-                packed.range((i+1)*SMER-1,i*SMER);
-
-            w.range((i+1)*64-1,i*64) = v;
+            ap_uint<SMER> v = packed.range((i+1)*SMER-1, i*SMER);
+            tab_hash[cnt++] = v;   // 1 SMER par slot 64 bits
         }
-
-        tab_hash[mem++] = w;
-        cnt += valid;
     }
 
-    *nElem = cnt;
+    *nElem = cnt;  // nombre exact de SMER stockés
 }
+
 
 
 void minimizer(
@@ -511,34 +377,29 @@ void minimizer(
 ){
 #pragma HLS DATAFLOW
 
+    constexpr int S_BITS = 2 * SMER;
+
     hls::stream<ap_uint<64>> s0,s1;
     hls::stream<ap_uint<8>>  v0,v1;
 
-    hls::stream<ap_uint<8*SMER>> s2,s3;
+    hls::stream<ap_uint<8*S_BITS>> s2,s3;
     hls::stream<ap_uint<8>> v2,v3;
 
-    hls::stream<ap_uint<8*SMER>> s4;
+    hls::stream<ap_uint<8*S_BITS>> s4;
     hls::stream<ap_uint<8>> v4;
 
-#pragma HLS STREAM variable=s0 depth=256
-#pragma HLS STREAM variable=s1 depth=256
-#pragma HLS STREAM variable=s2 depth=256
-#pragma HLS STREAM variable=s3 depth=256
-#pragma HLS STREAM variable=s4 depth=256
+    reader_hls(seq, n_bases, s0, v0);
+    adapter_hls(s0, v0, s1, v1);
 
-#pragma HLS STREAM variable=v0 depth=256
-#pragma HLS STREAM variable=v1 depth=256
-#pragma HLS STREAM variable=v2 depth=256
-#pragma HLS STREAM variable=v3 depth=256
-#pragma HLS STREAM variable=v4 depth=256
+    smer_thread_hls<SMER>(s1, v1, s2, v2);
 
-    reader_hls(seq,n_bases,s0,v0);
-    adapter_bases_v8(s0,v0,s1,v1);
-    thread_smer_generator_v2<SMER>(s1,v1,s2,v2);
-    adapter_smers_v8<SMER>(s2,v2,s3,v3);
-    thread_dedup_v8<WINDOW,SMER>(s3,v3,s4,v4);
-    thread_store_burst_v8<SMER>(s4,v4,tab_hash,nMin);
+    adapter_smer_hls<S_BITS>(s2, v2, s3, v3);
+
+    thread_dedup_v8<WINDOW, S_BITS>(s3, v3, s4, v4);
+
+    thread_store_burst_v8<S_BITS>(s4, v4, reinterpret_cast<ap_uint<64>*>(tab_hash), nMin);
 }
+
 
 extern "C"
 void minimizer_v3(
@@ -547,15 +408,15 @@ void minimizer_v3(
     uint64_t* tab_hash,
     uint64_t* nMin
 ){
-    if(s!=19 || w!=16){
-        *nMin=0;
+    if(s != 19 || w != 16){
+        *nMin = 0;
         return;
     }
 
     ap_uint<512>* th = (ap_uint<512>*)tab_hash;
-    ap_uint<64> nm=0;
+    ap_uint<64> nm = 0;
 
-    minimizer(seq,th,&nm,n);
+    minimizer(seq, th, &nm, n);
 
-    *nMin=nm;
+    *nMin = nm;
 }
