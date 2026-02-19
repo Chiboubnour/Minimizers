@@ -106,7 +106,6 @@ static void adapter_hls(
     }
 }
 
-#if 1
 template <int S_BASE>
 void smer_thread_hls(
     hls::stream<ap_uint<64>>& base_stream,
@@ -193,145 +192,7 @@ void smer_thread_hls(
         out_valid.write(count_smers);
     }
 }
-#else
-template <int S_BASE>
-void thread_rolling_smer(
-    hls::stream<ap_uint<64>>& base_stream,
-    hls::stream<ap_uint<8>>&  base_valid,
-    hls::stream<ap_uint<2*S_BASE>>& smer_stream,
-    hls::stream<bool>& smer_valid
-){
-#pragma HLS INLINE off
 
-    constexpr int S_BITS = 2*S_BASE;
-
-    ap_uint<S_BITS> fwd = 0;
-    ap_uint<S_BITS> rev = 0;
-    ap_uint<16> base_cnt = 0;
-
-    ap_uint<64> word = 0;
-    ap_uint<8>  valid = 0;
-    ap_uint<4>  idx = 8;   // force first read
-
-    while(true){
-#pragma HLS PIPELINE II=1
-#pragma HLS loop_tripcount min=100 max=100
-
-        // recharge word seulement quand nécessaire
-        if(idx == 8){
-
-            word  = base_stream.read();
-            valid = base_valid.read();
-
-            if(valid == 0){
-                smer_valid.write(false);
-                break;
-            }
-
-            idx = 0;
-        }
-
-        // lecture 1 base
-        if(idx < valid){
-
-            uint8_t nucl = (word >> (8*idx)) & 0xFF;
-            ap_uint<2> c = (nucl >> 1) & 3;
-
-            fwd = (fwd << 2) | c;
-            rev = (rev >> 2) |
-                  ((ap_uint<S_BITS>)(0x2 ^ c) << (S_BITS-2));
-
-            base_cnt++;
-
-            if(base_cnt >= S_BASE){
-
-                ap_uint<S_BITS> canon =
-                    (fwd < rev) ? fwd : rev;
-
-                smer_stream.write(canon);
-                smer_valid.write(true);
-            }
-        }
-
-        idx++;
-    }
-}
-
-template<int S_BITS>
-void thread_hash_smer(
-    hls::stream<ap_uint<S_BITS>>& smer_stream,
-    hls::stream<bool>& smer_valid,
-
-    hls::stream<ap_uint<S_BITS>>& hash_stream,
-    hls::stream<bool>& hash_valid
-){
-#pragma HLS INLINE off
-
-    while(true){
-#pragma HLS PIPELINE II=1
-#pragma HLS loop_tripcount min=100 max=100
-
-        bool v = smer_valid.read();
-
-        if(!v){
-            hash_valid.write(false);
-            break;
-        }
-
-        ap_uint<S_BITS> smer = smer_stream.read();
-
-        ap_uint<S_BITS> h =
-            hash_u64<S_BITS>((ap_uint<64>)smer);
-
-        hash_stream.write(h);
-        hash_valid.write(true);
-    }
-}
-template<int S_BITS>
-void thread_pack8(
-    hls::stream<ap_uint<S_BITS>>& in,
-    hls::stream<bool>& valid_i,
-
-    hls::stream<ap_uint<8*S_BITS>>& out,
-    hls::stream<ap_uint<8>>& valid_o
-){
-#pragma HLS INLINE off
-
-    ap_uint<8*S_BITS> buffer = 0;
-    ap_uint<4> cnt = 0;
-
-    while(true){
-#pragma HLS PIPELINE II=1
-#pragma HLS loop_tripcount min=100 max=100
-
-        bool v = valid_i.read();
-
-        if(!v){
-
-            if(cnt > 0){
-                out.write(buffer);
-                valid_o.write(cnt);
-            }
-
-            out.write(0);
-            valid_o.write(0);
-            break;
-        }
-
-        ap_uint<S_BITS> h = in.read();
-
-        buffer.range((cnt+1)*S_BITS-1, cnt*S_BITS) = h;
-        cnt++;
-
-        if(cnt == 8){
-            out.write(buffer);
-            valid_o.write(8);
-            cnt = 0;
-            buffer = 0;
-        }
-    }
-}
-#endif
 
 template<int S_BITS>
 static void adapter_smer_hls(
@@ -547,7 +408,7 @@ void thread_store_burst_v8(
     *nElem = cnt;
 }
 
-#if 1
+
 void minimizer(
     const ap_uint<64>* packed_sequence,
     ap_uint<64>* tab_hash,
@@ -635,78 +496,3 @@ void minimizer(
         nMinizrs
     );
 }
-#else
-void minimizer(
-    const ap_uint<64>* packed_sequence,
-    ap_uint<64>* tab_hash,
-    ap_uint<64>* nMinizrs,
-    ap_uint<64>  n_bases
-)
-{
-#pragma HLS INTERFACE m_axi     port=packed_sequence offset=slave bundle=gmem0
-#pragma HLS INTERFACE m_axi     port=tab_hash        offset=slave bundle=gmem1
-
-#pragma HLS INTERFACE s_axilite port=nMinizrs
-#pragma HLS INTERFACE s_axilite port=n_bases
-#pragma HLS INTERFACE s_axilite port=return
-
-#pragma HLS DATAFLOW
-
-    constexpr int S_BITS = 2 * SMER;
-
-    hls::stream<ap_uint<64>> st_base_raw;
-    hls::stream<ap_uint<8>>  st_base_valid;
-
-    hls::stream<ap_uint<64>> st_base_aligned;
-    hls::stream<ap_uint<8>>  st_base_aligned_valid;
-
-    hls::stream<ap_uint<S_BITS>> st_smer_roll;
-    hls::stream<bool>            st_smer_roll_valid;
-
-    hls::stream<ap_uint<S_BITS>> st_smer_hash;
-    hls::stream<bool>            st_smer_hash_valid;
-
-    hls::stream<ap_uint<8*S_BITS>> st_pack8;
-    hls::stream<ap_uint<8>>        st_pack8_valid;
-
-    hls::stream<ap_uint<8*S_BITS>> st_smer_aligned;
-    hls::stream<ap_uint<8>>        st_smer_aligned_valid;
-
-    hls::stream<ap_uint<8*S_BITS>> st_minimizers;
-    hls::stream<ap_uint<8>>        st_minimizers_valid;
-
-#pragma HLS STREAM variable=st_base_raw   depth=256
-#pragma HLS STREAM variable=st_base_valid depth=256
-
-#pragma HLS STREAM variable=st_base_aligned       depth=256
-#pragma HLS STREAM variable=st_base_aligned_valid depth=256
-
-#pragma HLS STREAM variable=st_smer_roll       depth=256
-#pragma HLS STREAM variable=st_smer_roll_valid depth=256
-
-#pragma HLS STREAM variable=st_smer_hash       depth=256
-#pragma HLS STREAM variable=st_smer_hash_valid depth=256
-
-#pragma HLS STREAM variable=st_pack8       depth=256
-#pragma HLS STREAM variable=st_pack8_valid depth=256
-
-#pragma HLS STREAM variable=st_smer_aligned       depth=256
-#pragma HLS STREAM variable=st_smer_aligned_valid depth=256
-
-#pragma HLS STREAM variable=st_minimizers       depth=256
-#pragma HLS STREAM variable=st_minimizers_valid depth=256
-
-    reader_hls( packed_sequence, n_bases,st_base_raw,st_base_valid );
-
-    adapter_hls( st_base_raw, st_base_valid, st_base_aligned, st_base_aligned_valid);
-    thread_rolling_smer<SMER>( st_base_aligned,st_base_aligned_valid, st_smer_roll,st_smer_roll_valid );
-    thread_hash_smer<S_BITS>( st_smer_roll, st_smer_roll_valid, st_smer_hash, st_smer_hash_valid  );
-    thread_pack8<S_BITS>( st_smer_hash, st_smer_hash_valid,st_pack8,st_pack8_valid );
-
-    adapter_smer_hls<S_BITS>( st_pack8, st_pack8_valid, st_smer_aligned,st_smer_aligned_valid);
-
-    thread_dedup_v8<WINDOW, S_BITS>(  st_smer_aligned, st_smer_aligned_valid, st_minimizers, st_minimizers_valid );
-
-    thread_store_burst_v8<S_BITS>(  st_minimizers,st_minimizers_valid,tab_hash,nMinizrs );
-}
-#endif
