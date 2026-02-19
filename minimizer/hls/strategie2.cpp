@@ -106,7 +106,7 @@ static void adapter_hls(
     }
 }
 
-#if 0
+#if 1
 template <int S_BASE>
 void smer_thread_hls(
     hls::stream<ap_uint<64>>& base_stream,
@@ -343,7 +343,7 @@ static void adapter_smer_hls(
 {
 #pragma HLS INLINE off
 
-    ap_uint<16*S_BITS> buffer = 0;  
+    ap_uint<16*S_BITS> buffer = 0;
     ap_uint<4> valid_count = 0;
 
     while(true){
@@ -389,13 +389,52 @@ void thread_dedup_v8(
 ){
 #pragma HLS INLINE off
 
-    ap_uint<SMER> buf[WINDOW];
-#pragma HLS ARRAY_PARTITION variable=buf complete
+    ap_uint<SMER> dq_val[WINDOW];
+    ap_uint<4>    dq_pos[WINDOW];
+#pragma HLS ARRAY_PARTITION variable=dq_val complete
+#pragma HLS ARRAY_PARTITION variable=dq_pos complete
 
+    ap_uint<4> head = 0;
+    ap_uint<4> tail = 0;
+
+    ap_uint<4> cur_pos = 0;
     ap_uint<SMER> last = ~ap_uint<SMER>(0);
 
-    ap_uint<4> pos = 0;    
-    ap_uint<5> fill = 0;
+    for(int p=0;p < 2;p++){
+#pragma HLS PIPELINE II=1
+
+        auto packed = in.read();
+        auto valid  = valid_i.read();
+        if(valid==0){
+            out.write(0);
+            valid_o.write(0);
+            return;
+        }
+
+        for(int i=0;i<8;i++){
+#pragma HLS PIPELINE II=1
+
+            ap_uint<SMER> v =
+                packed.range((i+1)*SMER-1, i*SMER);
+
+            dq_val[tail] = v;
+            dq_pos[tail] = cur_pos;
+            tail++;
+            cur_pos++;
+        }
+    }
+
+    for(int i=0;i<WINDOW;i++){
+        ap_uint<SMER> v = dq_val[i];
+
+        while(head != tail && dq_val[(tail-1)&15] > v){
+            tail--;
+        }
+
+        dq_val[tail] = v;
+        dq_pos[tail] = i;
+        tail++;
+    }
 
     while(true){
 #pragma HLS PIPELINE II=1
@@ -404,7 +443,7 @@ void thread_dedup_v8(
         auto packed = in.read();
         auto valid  = valid_i.read();
 
-        if(valid == 0){
+        if(valid==0){
             out.write(0);
             valid_o.write(0);
             break;
@@ -415,58 +454,42 @@ void thread_dedup_v8(
 
         for(int i=0;i<8;i++){
 
-            if(i < valid){
+            if(i>=valid) break;
 
-                ap_uint<SMER> v =
-                    packed.range((i+1)*SMER-1, i*SMER);
+            ap_uint<SMER> v =
+                packed.range((i+1)*SMER-1, i*SMER);
 
-                buf[pos] = v;
-
-                if(pos == WINDOW-1)
-                    pos = 0;
-                else
-                    pos++;
-
-                if(fill < WINDOW)
-                    fill++;
-
-                if(fill == WINDOW){
-
-
-                    ap_uint<SMER> m0 = (buf[0]  < buf[1])  ? buf[0]  : buf[1];
-                    ap_uint<SMER> m1 = (buf[2]  < buf[3])  ? buf[2]  : buf[3];
-                    ap_uint<SMER> m2 = (buf[4]  < buf[5])  ? buf[4]  : buf[5];
-                    ap_uint<SMER> m3 = (buf[6]  < buf[7])  ? buf[6]  : buf[7];
-                    ap_uint<SMER> m4 = (buf[8]  < buf[9])  ? buf[8]  : buf[9];
-                    ap_uint<SMER> m5 = (buf[10] < buf[11]) ? buf[10] : buf[11];
-                    ap_uint<SMER> m6 = (buf[12] < buf[13]) ? buf[12] : buf[13];
-                    ap_uint<SMER> m7 = (buf[14] < buf[15]) ? buf[14] : buf[15];
-
-                    ap_uint<SMER> n0 = (m0 < m1) ? m0 : m1;
-                    ap_uint<SMER> n1 = (m2 < m3) ? m2 : m3;
-                    ap_uint<SMER> n2 = (m4 < m5) ? m4 : m5;
-                    ap_uint<SMER> n3 = (m6 < m7) ? m6 : m7;
-
-                    ap_uint<SMER> p0 = (n0 < n1) ? n0 : n1;
-                    ap_uint<SMER> p1 = (n2 < n3) ? n2 : n3;
-
-                    ap_uint<SMER> m  = (p0 < p1) ? p0 : p1;
-
-                    if(m != last){
-                        last = m;
-                        pout.range((ocnt+1)*SMER-1, ocnt*SMER) = m;
-                        ocnt++;
-                    }
-                }
+            if(dq_pos[head] == (cur_pos - WINDOW)){
+                head++;
             }
+
+            while(head != tail &&
+                  dq_val[(tail-1)&15] > v){
+                tail--;
+            }
+
+            dq_val[tail] = v;
+            dq_pos[tail] = cur_pos;
+            tail++;
+
+            ap_uint<SMER> m = dq_val[head];
+
+            if(m != last){
+                last = m;
+                pout.range((ocnt+1)*SMER-1, ocnt*SMER) = m;
+                ocnt++;
+            }
+
+            cur_pos++;
         }
 
-        if(ocnt > 0){
+        if(ocnt>0){
             out.write(pout);
             valid_o.write(ocnt);
         }
     }
 }
+
 
 template<int SMER>
 void thread_store_burst_v8(
@@ -482,7 +505,7 @@ void thread_store_burst_v8(
     ap_uint<64> burst_buf[64];
 #pragma HLS ARRAY_PARTITION variable=burst_buf complete
 
-    ap_uint<6> bcnt = 0;   
+    ap_uint<6> bcnt = 0;   // 0..63
 
     while (true) {
 #pragma HLS PIPELINE II=1
@@ -524,7 +547,95 @@ void thread_store_burst_v8(
     *nElem = cnt;
 }
 
+#if 1
+void minimizer(
+    const ap_uint<64>* packed_sequence,
+    ap_uint<64>* tab_hash,
+    ap_uint<64>* nMinizrs,
+    ap_uint<64>  n_bases
+)
+{
+#pragma HLS INTERFACE m_axi     port=packed_sequence offset=slave bundle=gmem0
+#pragma HLS INTERFACE m_axi     port=tab_hash        offset=slave bundle=gmem1
 
+#pragma HLS INTERFACE s_axilite port=nMinizrs
+#pragma HLS INTERFACE s_axilite port=n_bases
+#pragma HLS INTERFACE s_axilite port=return
+
+#pragma HLS DATAFLOW
+
+    constexpr int S_BITS = 2 * SMER;
+
+    hls::stream<ap_uint<64>> st_base_raw;
+    hls::stream<ap_uint<8>>  st_base_valid;
+
+    hls::stream<ap_uint<64>> st_base_aligned;
+    hls::stream<ap_uint<8>>  st_base_aligned_valid;
+
+    hls::stream<ap_uint<8*S_BITS>> st_smer_packed;
+    hls::stream<ap_uint<8>>        st_smer_packed_valid;
+
+    hls::stream<ap_uint<8*S_BITS>> st_smer_aligned;
+    hls::stream<ap_uint<8>>        st_smer_aligned_valid;
+
+    hls::stream<ap_uint<8*S_BITS>> st_minimizers;
+    hls::stream<ap_uint<8>>        st_minimizers_valid;
+
+#pragma HLS STREAM variable=st_base_raw           depth=256
+#pragma HLS STREAM variable=st_base_valid         depth=256
+#pragma HLS STREAM variable=st_base_aligned       depth=256
+#pragma HLS STREAM variable=st_base_aligned_valid depth=256
+#pragma HLS STREAM variable=st_smer_packed        depth=256
+#pragma HLS STREAM variable=st_smer_packed_valid  depth=256
+#pragma HLS STREAM variable=st_smer_aligned       depth=256
+#pragma HLS STREAM variable=st_smer_aligned_valid depth=256
+#pragma HLS STREAM variable=st_minimizers         depth=256
+#pragma HLS STREAM variable=st_minimizers_valid   depth=256
+
+
+    reader_hls(
+        packed_sequence,
+        n_bases,
+        st_base_raw,
+        st_base_valid
+    );
+
+    adapter_hls(
+        st_base_raw,
+        st_base_valid,
+        st_base_aligned,
+        st_base_aligned_valid
+    );
+
+    smer_thread_hls<SMER>(
+        st_base_aligned,
+        st_base_aligned_valid,
+        st_smer_packed,
+        st_smer_packed_valid
+    );
+
+    adapter_smer_hls<S_BITS>(
+        st_smer_packed,
+        st_smer_packed_valid,
+        st_smer_aligned,
+        st_smer_aligned_valid
+    );
+
+    thread_dedup_v8<WINDOW, S_BITS>(
+        st_smer_aligned,
+        st_smer_aligned_valid,
+        st_minimizers,
+        st_minimizers_valid
+    );
+
+    thread_store_burst_v8<S_BITS>(
+        st_minimizers,
+        st_minimizers_valid,
+        tab_hash,
+        nMinizrs
+    );
+}
+#else
 void minimizer(
     const ap_uint<64>* packed_sequence,
     ap_uint<64>* tab_hash,
@@ -578,7 +689,7 @@ void minimizer(
 
 #pragma HLS STREAM variable=st_pack8       depth=256
 #pragma HLS STREAM variable=st_pack8_valid depth=256
-   
+
 #pragma HLS STREAM variable=st_smer_aligned       depth=256
 #pragma HLS STREAM variable=st_smer_aligned_valid depth=256
 
@@ -588,11 +699,8 @@ void minimizer(
     reader_hls( packed_sequence, n_bases,st_base_raw,st_base_valid );
 
     adapter_hls( st_base_raw, st_base_valid, st_base_aligned, st_base_aligned_valid);
-
     thread_rolling_smer<SMER>( st_base_aligned,st_base_aligned_valid, st_smer_roll,st_smer_roll_valid );
-
     thread_hash_smer<S_BITS>( st_smer_roll, st_smer_roll_valid, st_smer_hash, st_smer_hash_valid  );
-
     thread_pack8<S_BITS>( st_smer_hash, st_smer_hash_valid,st_pack8,st_pack8_valid );
 
     adapter_smer_hls<S_BITS>( st_pack8, st_pack8_valid, st_smer_aligned,st_smer_aligned_valid);
@@ -601,3 +709,4 @@ void minimizer(
 
     thread_store_burst_v8<S_BITS>(  st_minimizers,st_minimizers_valid,tab_hash,nMinizrs );
 }
+#endif
