@@ -29,7 +29,15 @@ inline ap_uint<resu_size> hash_u64(ap_uint<64> key) {
     key = (key + (key << 31)) /*& mask*/;
     return key;
 }
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 static void reader_hls(
     const ap_uint<64>* packed_sequence,
     ap_uint<64> n_bases,
@@ -58,7 +66,15 @@ static void reader_hls(
     base_stream.write(0);
     base_valid.write(0);
 }
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 static void adapter_hls(
     hls::stream<ap_uint<64>>& base_stream,
     hls::stream<ap_uint<8>>&  base_valid,
@@ -105,7 +121,15 @@ static void adapter_hls(
         }
     }
 }
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 #if 0
 template <int S_BASE>
 void smer_thread_hls(
@@ -212,85 +236,80 @@ void smer_thread_hls(
 #pragma HLS INLINE off
 
     constexpr int S_BITS = 2*S_BASE;
+    const ap_uint<S_BITS> MASK = ap_uint<S_BITS>(-1);
 
-    ap_uint<S_BITS> fwd = 0;
-    ap_uint<S_BITS> rev = 0;
-    ap_uint<16> base_cnt = 0;
-
-    ap_uint<8*S_BITS> buffer = 0; // contiendra 8 smers packés
-    ap_uint<4> count_smers = 0;
-
-    ap_uint<64> word = 0;
-    ap_uint<8>  valid = 0;
-    ap_uint<4>  idx = 8; // force lecture du premier mot
+    ap_uint<S_BITS> fwd_state = 0;
+    ap_uint<S_BITS> rev_state = 0;
+    ap_uint<32> base_cnt = 0;
 
     while(true){
 #pragma HLS PIPELINE II=1
 #pragma HLS loop_tripcount min=100 max=100
 
-        // Lecture d'un mot si on a traité les 8 bases précédentes
-        if(idx == 8){
-            word  = base_stream.read();
-            valid = base_valid.read();
-            if(valid == 0){
-                // flush final si nécessaire
-                if(count_smers > 0){
-                    out_stream.write(buffer);
-                    out_valid.write(count_smers);
-                }
-                out_stream.write(0);
-                out_valid.write(0);
-                break;
-            }
-            idx = 0;
+        ap_uint<64> word  = base_stream.read();
+        ap_uint<8>  valid = base_valid.read();
+
+        if(valid == 0){
+            out_stream.write(0);
+            out_valid.write(0);
+            break;
         }
 
-        // lecture base par base
-        if(idx < valid){
+        ap_uint<8*S_BITS> packed_out = 0;
+        ap_uint<4> out_count = 0;
 
-            uint8_t nucl = (word >> (8*idx)) & 0xFF;
-            ap_uint<2> c = (nucl >> 1) & 3;
+        ap_uint<S_BITS> fwd_local = fwd_state;
+        ap_uint<S_BITS> rev_local = rev_state;
 
-            // rolling smer
-            fwd = (fwd << 2) | c;
-            rev = (rev >> 2) | ((ap_uint<S_BITS>)(0x2 ^ c) << (S_BITS-2));
+        for(int i=0;i<8;i++){
+#pragma HLS UNROLL
 
-            base_cnt++;
+            if(i < valid){
 
-            if(base_cnt >= S_BASE){
+                uint8_t nucl = (word >> (8*i)) & 0xFF;
+                ap_uint<2> c = (nucl >> 1) & 3;
+                ap_uint<2> comp = 0x2 ^ c;
 
-                ap_uint<S_BITS> canon = (fwd < rev) ? fwd : rev;
+                fwd_local <<= 2;
+                fwd_local(1,0) = c;
 
-                // hash
-                ap_uint<S_BITS> h = hash_u64<S_BITS>((ap_uint<64>)canon);
+                rev_local >>= 2;
+                rev_local(S_BITS-1,S_BITS-2) = comp;
 
-                // pack 8 smers
-                buffer.range((count_smers+1)*S_BITS-1, count_smers*S_BITS) = h;
-                count_smers++;
+                base_cnt++;
 
-                if(count_smers == 8){
-                    out_stream.write(buffer);
-                    out_valid.write(8);
-                    buffer = 0;
-                    count_smers = 0;
+                if(base_cnt >= S_BASE){
+
+                    ap_uint<S_BITS> canon = (fwd_local < rev_local) ? fwd_local : rev_local;
+
+                    ap_uint<S_BITS> h = hash_u64<S_BITS>((ap_uint<64>)canon);
+
+                    packed_out.range( (out_count+1)*S_BITS-1,  out_count*S_BITS ) = h;
+
+                    out_count++;
                 }
             }
         }
 
-        idx++;
-    }
+        fwd_state = fwd_local & MASK;
+        rev_state = rev_local;
 
-    // flush final si moins de 8 smers
-    if(count_smers > 0){
-        out_stream.write(buffer);
-        out_valid.write(count_smers);
+        if(out_count > 0){
+            out_stream.write(packed_out);
+            out_valid.write(out_count);
+        }
     }
 }
-
-
-
 #endif
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int S_BITS>
 static void adapter_smer_hls(
     hls::stream<ap_uint<8*S_BITS>>& base_stream,
@@ -337,7 +356,16 @@ static void adapter_smer_hls(
         }
     }
 }
-#if 0
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
+#if 1
 template<int WINDOW,int SMER>
 void thread_dedup_v8(
     hls::stream<ap_uint<8*SMER>>& in,
@@ -525,6 +553,15 @@ void packet_dedup_v8(
     }
 }
 #endif
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int SMER>
 void thread_store_burst_v8(
     hls::stream<ap_uint<8*SMER>>& in,
@@ -539,7 +576,7 @@ void thread_store_burst_v8(
     ap_uint<64> burst_buf[64];
 #pragma HLS ARRAY_PARTITION variable=burst_buf complete
 
-    ap_uint<6> bcnt = 0;   // 0..63
+    ap_uint<6> bcnt = 0;
 
     while (true) {
 #pragma HLS PIPELINE II=1
@@ -580,8 +617,15 @@ void thread_store_burst_v8(
 
     *nElem = cnt;
 }
-
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void minimizer(
     const ap_uint<64>* packed_sequence,
     ap_uint<64>* tab_hash,
@@ -634,13 +678,8 @@ void minimizer(
     smer_thread_hls<SMER>( st_base_aligned, st_base_aligned_valid, st_smer_packed,st_smer_packed_valid);
 
     adapter_smer_hls<S_BITS>( st_smer_packed, st_smer_packed_valid,st_smer_aligned,st_smer_aligned_valid);
-#if 0
-    thread_dedup_v8<WINDOW, S_BITS>(
-        st_smer_aligned,
-        st_smer_aligned_valid,
-        st_minimizers,
-        st_minimizers_valid
-    );
+#if 1
+    thread_dedup_v8<WINDOW, S_BITS>( st_smer_aligned,st_smer_aligned_valid,st_minimizers,st_minimizers_valid);
 #else
 
     hls::stream<ap_uint<8*S_BITS>> st_window_min;
@@ -649,19 +688,8 @@ void minimizer(
 #pragma HLS STREAM variable=st_window_min       depth=256
 #pragma HLS STREAM variable=st_window_min_valid depth=256
 
-    packet_window_min_v8<WINDOW, S_BITS>(
-        st_smer_aligned,
-        st_smer_aligned_valid,
-        st_window_min,
-        st_window_min_valid
-    );
-
-    packet_dedup_v8<S_BITS>(
-        st_window_min,
-        st_window_min_valid,
-        st_minimizers,
-        st_minimizers_valid
-    );
+    packet_window_min_v8<WINDOW, S_BITS>( st_smer_aligned,st_smer_aligned_valid,st_window_min, st_window_min_valid);
+    packet_dedup_v8<S_BITS>(st_window_min,st_window_min_valid,st_minimizers, st_minimizers_valid);
 
 #endif
     thread_store_burst_v8<S_BITS>(st_minimizers,st_minimizers_valid,tab_hash,nMinizrs);
