@@ -30,7 +30,15 @@ inline ap_uint<64> hash_u64(ap_uint<SMER_SIZE> key) {
     k64 = k64 + (k64 << 31);
     return k64;
 }
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void thread_reader(
     const ap_uint<64>* packed_sequence,
     ap_uint<64> n,
@@ -51,16 +59,19 @@ void thread_reader(
     }
     stream_o.write(0);
 }
-
-
-// ============================================================
-// THREAD S-MER
-// ============================================================
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void thread_smer(
     hls::stream<uint8_t>& stream_i,
-    hls::stream<ap_uint<SMER_SIZE>>& stream_o,
-    ap_uint<SMER_SIZE>& debug_first_smer,
-    ap_uint<SMER_SIZE>& debug_first_hash
+    hls::stream<ap_uint<SMER_SIZE>>& stream_o
+    
 ) {
 #pragma HLS INLINE off
     ap_uint<SMER_SIZE> fwd = 0;
@@ -89,22 +100,20 @@ void thread_smer(
         ap_uint<SMER_SIZE> canon = min_v1(fwd, rev);
         ap_uint<64> hash_val = hash_u64(canon);
 
-        // Sauvegarde le premier s-mer et hash pour debug
-        if (!first_smer_done) {
-            debug_first_smer = canon;
-            debug_first_hash = hash_val;
-            first_smer_done = true;
-        }
-
         stream_o.write(hash_val);
     }
 
     stream_o.write(0);
 }
-
-// ============================================================
-// THREAD DEDUP
-// ============================================================
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void thread_dedup(
     hls::stream<ap_uint<SMER_SIZE>>& stream_i,
     hls::stream<ap_uint<SMER_SIZE>>& stream_o
@@ -145,10 +154,15 @@ void thread_dedup(
 
     stream_o.write(0);
 }
-
-// ============================================================
-// THREAD STORE
-// ============================================================
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void thread_store(
     hls::stream<ap_uint<SMER_SIZE>>& stream_i,
     ap_uint<64>* tab_hash,
@@ -164,25 +178,26 @@ void thread_store(
     }
     *nElements = cnt;
 }
-
-// ============================================================
-// TOP FUNCTION
-// ============================================================
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void minimizer(
     const ap_uint<64>* packed_sequence,
     ap_uint<64> n,
     ap_uint<64>* tab_hash,
-    ap_uint<64>* nMinizrs,
+    ap_uint<64>* nMinizrs
 
-    ap_uint<SMER_SIZE>& debug_first_smer,
-    ap_uint<SMER_SIZE>& debug_first_hash
 ) {
 #pragma HLS INTERFACE mode=m_axi     port=packed_sequence
 #pragma HLS INTERFACE mode=m_axi     port=tab_hash
 #pragma HLS INTERFACE mode=s_axilite port=n
 #pragma HLS INTERFACE mode=s_axilite port=nMinizrs
-#pragma HLS INTERFACE mode=s_axilite port=debug_first_smer
-#pragma HLS INTERFACE mode=s_axilite port=debug_first_hash
 #pragma HLS INTERFACE mode=s_axilite port=return
 
 #pragma HLS DATAFLOW
@@ -194,9 +209,8 @@ void minimizer(
 #pragma HLS STREAM variable=fifo_2 depth=1024
 #pragma HLS STREAM variable=fifo_3 depth=1024
 
-    // Pipeline avec debug
     thread_reader(packed_sequence, n ,fifo_1);
-    thread_smer(fifo_1, fifo_2, debug_first_smer, debug_first_hash);
+    thread_smer(fifo_1, fifo_2);
     thread_dedup(fifo_2, fifo_3);
     thread_store(fifo_3, tab_hash, nMinizrs);
 }
