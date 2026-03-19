@@ -2,9 +2,9 @@
 #include <hls_stream.h>
 #include <cstdint>
 
-#define SMER        19
+#define SMER        21
 #define SMER_SIZE   (2 * SMER)
-#define WINDOW_SIZE 16
+#define WINDOW_SIZE 11
 #define DATA_DEPTH  1024
 
 inline ap_uint<2> nucl_encode(uint8_t c) {
@@ -30,15 +30,7 @@ inline ap_uint<64> hash_u64(ap_uint<SMER_SIZE> key) {
     k64 = k64 + (k64 << 31);
     return k64;
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
+
 void thread_reader(
     const ap_uint<64>* packed_sequence,
     ap_uint<64> n,
@@ -47,11 +39,13 @@ void thread_reader(
     ap_uint<64> nb_words = (n + 7) >> 3;
     for (ap_uint<64> i = 0; i < nb_words; i++) {
 #pragma HLS PIPELINE II=1
+#pragma HLS loop_tripcount min=100 max=100
+
         ap_uint<64> word = packed_sequence[i];
 
         for (int j = 0; j < 8; j++) {
 #pragma HLS UNROLL
-            uint64_t base_idx = (i << 3) + j;
+        	ap_uint<64> base_idx = (i << 3) + j;
             if (base_idx >= n) break;
             uint8_t c = word.range(8*j + 7, 8*j);
             stream_o.write(c);
@@ -59,25 +53,14 @@ void thread_reader(
     }
     stream_o.write(0);
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
-void thread_smer(
+
+void smer_generate_thread(
     hls::stream<uint8_t>& stream_i,
     hls::stream<ap_uint<SMER_SIZE>>& stream_o
-    
-) {
+){
 #pragma HLS INLINE off
     ap_uint<SMER_SIZE> fwd = 0;
     ap_uint<SMER_SIZE> rev = 0;
-
-    bool first_smer_done = false;
 
     for (int i = 0; i < SMER-1; i++) {
 #pragma HLS PIPELINE II=1
@@ -98,22 +81,32 @@ void thread_smer(
         rev = (rev >> 2) | ((ap_uint<SMER_SIZE>)(0x2 ^ b) << (SMER_SIZE-2));
 
         ap_uint<SMER_SIZE> canon = min_v1(fwd, rev);
-        ap_uint<64> hash_val = hash_u64(canon);
-
-        stream_o.write(hash_val);
+        stream_o.write(canon);
     }
 
-    stream_o.write(0);
+    stream_o.write(0); // EOS
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
+void hash_thread(
+    hls::stream<ap_uint<SMER_SIZE>>& stream_i,
+    hls::stream<ap_uint<SMER_SIZE>>& stream_o
+){
+#pragma HLS INLINE off
+    while(true){
+#pragma HLS PIPELINE II=1
+        ap_uint<SMER_SIZE> smer = stream_i.read();
+        if(smer == 0){
+            stream_o.write(0);
+            break;
+        }
+        ap_uint<SMER_SIZE> h = hash_u64(smer);
+        stream_o.write(h);
+    }
+}
+
+
+// ============================================================
+// THREAD DEDUP
+// ============================================================
 void thread_dedup(
     hls::stream<ap_uint<SMER_SIZE>>& stream_i,
     hls::stream<ap_uint<SMER_SIZE>>& stream_o
@@ -132,6 +125,8 @@ void thread_dedup(
 
     while (true) {
 #pragma HLS PIPELINE II=1
+#pragma HLS loop_tripcount min=100 max=100
+
         ap_uint<SMER_SIZE> v = stream_i.read();
         if (v == 0) break;
 
@@ -154,15 +149,10 @@ void thread_dedup(
 
     stream_o.write(0);
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
+
+// ============================================================
+// THREAD STORE
+// ============================================================
 void thread_store(
     hls::stream<ap_uint<SMER_SIZE>>& stream_i,
     ap_uint<64>* tab_hash,
@@ -172,28 +162,25 @@ void thread_store(
     int cnt = 0;
     while (true) {
 #pragma HLS PIPELINE II=1
+#pragma HLS loop_tripcount min=100 max=100
+
         ap_uint<SMER_SIZE> v = stream_i.read();
         if (v == 0) break;
         tab_hash[cnt++] = v;
     }
     *nElements = cnt;
 }
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
+
+// ============================================================
+// TOP FUNCTION
+// ============================================================
+
 void minimizer(
     const ap_uint<64>* packed_sequence,
     ap_uint<64> n,
     ap_uint<64>* tab_hash,
     ap_uint<64>* nMinizrs
-
-) {
+){
 #pragma HLS INTERFACE mode=m_axi     port=packed_sequence
 #pragma HLS INTERFACE mode=m_axi     port=tab_hash
 #pragma HLS INTERFACE mode=s_axilite port=n
@@ -201,16 +188,20 @@ void minimizer(
 #pragma HLS INTERFACE mode=s_axilite port=return
 
 #pragma HLS DATAFLOW
-    hls::stream<uint8_t, DATA_DEPTH> fifo_1;
-    hls::stream<ap_uint<SMER_SIZE>, DATA_DEPTH> fifo_2;
-    hls::stream<ap_uint<SMER_SIZE>, DATA_DEPTH> fifo_3;
 
-#pragma HLS STREAM variable=fifo_1 depth=1024
-#pragma HLS STREAM variable=fifo_2 depth=1024
-#pragma HLS STREAM variable=fifo_3 depth=1024
+    hls::stream<uint8_t, 256> fifo_1;
+    hls::stream<ap_uint<SMER_SIZE>, 256> fifo_2;
+    hls::stream<ap_uint<SMER_SIZE>, 256> fifo_3;
+    hls::stream<ap_uint<SMER_SIZE>, 256> fifo_4;
 
-    thread_reader(packed_sequence, n ,fifo_1);
-    thread_smer(fifo_1, fifo_2);
-    thread_dedup(fifo_2, fifo_3);
-    thread_store(fifo_3, tab_hash, nMinizrs);
+#pragma HLS STREAM variable=fifo_1 depth=2
+#pragma HLS STREAM variable=fifo_2 depth=2
+#pragma HLS STREAM variable=fifo_3 depth=2
+#pragma HLS STREAM variable=fifo_4 depth=2
+
+    thread_reader(packed_sequence, n, fifo_1);
+    smer_generate_thread(fifo_1, fifo_2);
+    hash_thread(fifo_2, fifo_3);
+    thread_dedup(fifo_3, fifo_4);
+    thread_store(fifo_4, tab_hash, nMinizrs);
 }
