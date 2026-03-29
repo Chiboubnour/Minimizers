@@ -5,3 +5,4 @@ parser/data/fasta/chm13v2.0.fna
 parser/data/fasta/HG00146_hap1_hprc_r2_v1.0.1.fna
 parser/data/fastq/AHX_ACXIOSF_6_1_C2FGHACXX.IND4_clean.fastq
 parser/data/fastq/m64122_220509_072836.hifi_reads.fastq
+parser/data/fastq/m64122_220509_072836.hifi_reads.fastq.lz4
