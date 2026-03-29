@@ -9,7 +9,7 @@ set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(NB_SC_DECODER_EXPLORER LANGUAGES CXX)
 
-option (SANITIZE_DECODERS "Add sanitization values" ON)
+option (SANITIZE_DECODERS "Add sanitization values" OFF)
 if (SANITIZE_DECODERS)
 	set (SANITIZE_CXXFLAGS "-fsanitize=address;-fsanitize=undefined;-fno-omit-frame-pointer;-ggdb")
 	set (SANITIZE_LDFLAGS  "-fsanitize=address;-fsanitize=undefined;-fno-omit-frame-pointer;-ggdb")
@@ -24,10 +24,36 @@ add_link_options (${SANITIZE_LDFLAGS})
 
 #######################################################################################################################################
 
-add_executable(hls_test
-		./hls/fasta_parser.cpp
-		./src/main.cpp
+add_executable(main
+	./src/tools/compare.cpp
+	./src/tools/TimeMeasure.cpp
+	./src/hls/fastq_parser.cpp
+	./src/hls/fasta_parser.cpp
+	./src/hls/fasta_parser_neon.cpp
+	./src/hls/fasta_parser_neon_ultimate.cpp
+	./src/hls/fasta_parser_neon_json.cpp
+	./src/tools/stats.cpp
+	./src/main.cpp
 	)
-target_include_directories (hls_test PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/common)
+target_include_directories (main PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/common)
+
+#######################################################################################################################################
+
+project(test)
+#
+set(SOURCE_FILES
+	./src/tools/compare.cpp
+	./src/tools/TimeMeasure.cpp
+	./src/catch2v3/catch_amalgamated.cpp
+	./src/hls/fastq_parser.cpp
+	./src/hls/fasta_parser.cpp
+	./src/hls/fasta_parser_neon.cpp
+	./src/hls/fasta_parser_neon_ultimate.cpp
+	./src/hls/fasta_parser_neon_json.cpp
+	./src/tools/stats.cpp
+	./src/test.cpp
+)
+#
+add_executable(test ${SOURCE_FILES})
 
 #######################################################################################################################################
