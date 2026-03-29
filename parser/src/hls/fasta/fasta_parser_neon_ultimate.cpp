@@ -8,45 +8,30 @@
 #include <stdint.h>
 #include <stddef.h>
 //
-#include "../tools/TimeMeasure.hpp"
-#include "../tools/stats.hpp"
-//
-//
-//
-//
-//
-// ================= LUT =================
+#include "../../tools/TimeMeasure.hpp"
 
+// LUT (identique à avant)
 static uint8_t shuffle_table[65536][16];
 static uint8_t popcount_table[65536];
 
-void init_shuffle_table() {
+static void init_shuffle_table() {
     for (uint32_t m = 0; m < 65536; m++) {
         uint8_t c = 0;
         for (int i = 0; i < 16; i++) {
-            if (m & (1 << i)) {
-                shuffle_table[m][c++] = i;
-            }
+            if (m & (1 << i)) shuffle_table[m][c++] = i;
         }
-        for (int i = c; i < 16; i++) {
-            shuffle_table[m][i] = 0;
-        }
+        for (int i = c; i < 16; i++) shuffle_table[m][i] = 0;
         popcount_table[m] = c;
     }
 }
 
-// ================= MOVEMASK =================
-
-inline int movemask(const uint8x16_t input)
-{
-    uint16x8_t high_bits = vreinterpretq_u16_u8 (vshrq_n_u8 (input, 7));
-    uint32x4_t paired16  = vreinterpretq_u32_u16(vsraq_n_u16(high_bits, high_bits, 7));
-    uint64x2_t paired32  = vreinterpretq_u64_u32(vsraq_n_u32(paired16, paired16, 14));
-    uint8x16_t paired64  = vreinterpretq_u8_u64 (vsraq_n_u64(paired32, paired32, 28));
-    return vgetq_lane_u8(paired64, 0) | ((int)vgetq_lane_u8(paired64, 8) << 8);
+static inline uint16_t movemask(uint8x16_t v) {
+    uint8_t tmp[16];
+    vst1q_u8(tmp, vshrq_n_u8(v, 7));
+    uint16_t m = 0;
+    for (int i = 0; i < 16; i++) m |= (tmp[i] & 1) << i;
+    return m;
 }
-
-// ================= VALID =================
 
 static inline uint8x16_t valid_mask(uint8x16_t v) {
     uint8x16_t A = vceqq_u8(v, vdupq_n_u8('A'));
@@ -56,15 +41,14 @@ static inline uint8x16_t valid_mask(uint8x16_t v) {
     uint8x16_t U = vceqq_u8(v, vdupq_n_u8('U'));
     uint8x16_t N = vceqq_u8(v, vdupq_n_u8('N'));
 
-    return vorrq_u8(
-        vorrq_u8(vorrq_u8(A, C), vorrq_u8(G, T)),
-        vorrq_u8(U, N)
-    );
+    return vorrq_u8(vorrq_u8(vorrq_u8(A, C), vorrq_u8(G, T)), vorrq_u8(U, N));
 }
 
-// ================= MAIN =================
+// ===============================
+// VERSION CORRIGÉE
+// ===============================
 
-void fasta_neon_json(
+void fasta_neon_ultimate(
     const char *in,
     size_t size,
     char *out,
@@ -110,51 +94,23 @@ void fasta_neon_json(
         uint16_t keep_mask = movemask(keep_vec);
         keep_mask &= ~header_mask;
 
-        if (keep_mask == 0 && gt_mask == 0) continue;
+        // ===== 🚨 NEWLINE FIX =====
+        // on insère newline EXACTEMENT à la position du '>'
+        // et AVANT les données suivantes
 
-        // ===============================
-        // segmentation intra-bloc
-        // ===============================
-
-        int start = 0;
-
-        while (start < 16) {
-
-            // trouver prochain '>'
-            int next_gt = -1;
-            for (int j = start; j < 16; j++) {
-                if (gt_mask & (1 << j)) {
-                    next_gt = j;
-                    break;
-                }
-            }
-
-            int end = (next_gt == -1) ? 16 : next_gt;
-
-            // masque segment
-            uint16_t segment_mask = ((1 << end) - 1) ^ ((1 << start) - 1);
-            uint16_t seg_keep = keep_mask & segment_mask;
-
-            if (seg_keep) {
-                uint8x16_t idx = vld1q_u8(shuffle_table[seg_keep]);
-                uint8x16_t compacted = vqtbl1q_u8(upper, idx);
-
-                uint8_t n = popcount_table[seg_keep];
-                vst1q_u8((uint8_t*)(out + pos), compacted);
-                pos += n;
-                writing = 1;
-            }
-
-            // insertion newline
-            if (next_gt != -1) {
+        for (int j = 0; j < 16; j++) {
+            if (gt_mask & (1 << j)) {
                 if (writing) {
                     out[pos++] = '\n';
                     writing = 0;
                 }
             }
 
-            if (next_gt == -1) break;
-            start = next_gt + 1;
+            if (keep_mask & (1 << j)) {
+                // accès direct au byte SIMD
+                out[pos++] = ((uint8_t*)&upper)[j];
+                writing = 1;
+            }
         }
     }
 
@@ -195,7 +151,7 @@ void fasta_neon_json(
 //
 //
 //
-void fasta_neon_json_parser(
+void fasta_neon_ultimate_parser(
     const std::string& file_i,
     const std::string& file_o
 ){
@@ -244,7 +200,7 @@ void fasta_neon_json_parser(
     //
     c_time.start();
     size_t out_size;
-    fasta_neon_json(buffer_i, size, buffer_o, &out_size);
+    fasta_neon_ultimate(buffer_i, size, buffer_o, &out_size);
     c_time.stop();
 
     std::cout << "Temps : " << c_time.ms() << " ms and debit : " << c_time.MBps(rBytes) << " Mbps" << std::endl;
@@ -258,22 +214,6 @@ void fasta_neon_json_parser(
     c_time.stop();
 
     std::cout << "Temps : " << c_time.ms() << " ms and debit : " << c_time.MBps(rBytes) << " Mbps" << std::endl;
-
-    c_time.start();
-    stats_r r = stats(buffer_o, out_size);
-    c_time.stop();
-    std::cout << "Temps : " << c_time.ms() << " ms and debit : " << c_time.MBps(rBytes) << " Mbps" << std::endl;
-
-    c_time.start();
-    r = stats2(buffer_o, out_size);
-    c_time.stop();
-    std::cout << "Temps : " << c_time.ms() << " ms and debit : " << c_time.MBps(rBytes) << " Mbps" << std::endl;
-    printf("A    = %10d\n", r.A);
-    printf("C    = %10d\n", r.C);
-    printf("T    = %10d\n", r.T);
-    printf("G    = %10d\n", r.G);
-    printf("size = %10zu\n", out_size);
-    printf("NL   = %10d\n", r.nL);
 
     //
     //

@@ -4,7 +4,8 @@
 #include <cstdio>
 #include <cstdint>
 //
-#include "../tools/TimeMeasure.hpp"
+#include "../../tools/TimeMeasure.hpp"
+#include "../../tools/stats.hpp"
 //
 //
 //
@@ -31,9 +32,11 @@ void fastq_branchless(
     size_t *out_size
 ) {
     size_t pos = 0;
-    size_t i = 0;
+    size_t i   = 0;
+    size_t seq = 0;
     for (i = 0; i < size; i++) {
 
+        //printf("SEQ(%d) START\n", seq++);
         if( input[i] != '@' )
         {
             printf("Error @ (char = %c, pos = %zu)\n", input[i], pos);
@@ -49,6 +52,8 @@ void fastq_branchless(
         }
         i += 1; // on skip maintenant le '\n'
         
+        //printf("    HEADER OK (%zu)\n", i);
+
         while (input[i] != '\n')
         {
             output[pos] = input[i];
@@ -57,6 +62,8 @@ void fastq_branchless(
         }
         i += 1; // on skip maintenant le '\n'
         
+        //printf("    PAYLOAD OK (%zu)\n", i);
+
         if( input[i] != '+' )
         {
             printf("Error + (char = %c, pos = %zu)\n", input[i], pos);
@@ -65,10 +72,11 @@ void fastq_branchless(
 
         while (input[i] != '\n')
         {
-            printf("%c", input[i]); fflush( stdout );
             i += 1;
         }
         i += 1; // on skip maintenant le '\n'
+
+        //printf("    TRUC+ OK (%zu)\n", i);
 
         while( (input[i] != '\n') && (i < size) )
         {
@@ -77,6 +85,8 @@ void fastq_branchless(
         // i += 1; non car deja rajouté dans la boucle FOR
         output[pos] = '\n';
         pos += 1;
+
+        //printf("    QUALITY OK (%zu)\n", i);
 
     }
 

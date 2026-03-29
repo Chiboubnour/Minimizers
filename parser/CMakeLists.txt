@@ -27,11 +27,11 @@ add_link_options (${SANITIZE_LDFLAGS})
 add_executable(main
 	./src/tools/compare.cpp
 	./src/tools/TimeMeasure.cpp
-	./src/hls/fastq_parser.cpp
-	./src/hls/fasta_parser.cpp
-	./src/hls/fasta_parser_neon.cpp
-	./src/hls/fasta_parser_neon_ultimate.cpp
-	./src/hls/fasta_parser_neon_json.cpp
+	./src/hls/fastq/fastq_parser.cpp
+	./src/hls/fasta/fasta_parser.cpp
+	./src/hls/fasta/fasta_parser_neon.cpp
+	./src/hls/fasta/fasta_parser_neon_ultimate.cpp
+	./src/hls/fasta/fasta_parser_neon_json.cpp
 	./src/tools/stats.cpp
 	./src/main.cpp
 	)
@@ -45,11 +45,11 @@ set(SOURCE_FILES
 	./src/tools/compare.cpp
 	./src/tools/TimeMeasure.cpp
 	./src/catch2v3/catch_amalgamated.cpp
-	./src/hls/fastq_parser.cpp
-	./src/hls/fasta_parser.cpp
-	./src/hls/fasta_parser_neon.cpp
-	./src/hls/fasta_parser_neon_ultimate.cpp
-	./src/hls/fasta_parser_neon_json.cpp
+	./src/hls/fastq/fastq_parser.cpp
+	./src/hls/fasta/fasta_parser.cpp
+	./src/hls/fasta/fasta_parser_neon.cpp
+	./src/hls/fasta/fasta_parser_neon_ultimate.cpp
+	./src/hls/fasta/fasta_parser_neon_json.cpp
 	./src/tools/stats.cpp
 	./src/test.cpp
 )

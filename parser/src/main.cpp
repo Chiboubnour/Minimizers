@@ -13,12 +13,12 @@
 //
 //
 //
-#include "./hls/fastq_parser.hpp"
+#include "./hls/fastq/fastq_parser.hpp"
 //
-#include "./hls/fasta_parser.hpp"
-#include "./hls/fasta_parser_neon.hpp"
-#include "./hls/fasta_parser_neon_ultimate.hpp"
-#include "./hls/fasta_parser_neon_json.hpp"
+#include "./hls/fasta/fasta_parser.hpp"
+#include "./hls/fasta/fasta_parser_neon.hpp"
+#include "./hls/fasta/fasta_parser_neon_ultimate.hpp"
+#include "./hls/fasta/fasta_parser_neon_json.hpp"
 //
 //
 //
