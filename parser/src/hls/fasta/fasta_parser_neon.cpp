@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdint>
-#include <arm_neon.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <arm_neon.h>
 //
 #include "../../tools/TimeMeasure.hpp"
 
@@ -26,7 +26,7 @@ static inline uint8x16_t valid_mask(const uint8x16_t v) {
 // ==========================
 // movemask NEON
 // ==========================
-#if 1
+
 inline uint16_t neon_movemask(const uint8x16_t input)
 {
     const uint16x8_t high_bits = vreinterpretq_u16_u8 (vshrq_n_u8 (input, 7));
@@ -35,22 +35,6 @@ inline uint16_t neon_movemask(const uint8x16_t input)
     const uint8x16_t paired64  = vreinterpretq_u8_u64 (vsraq_n_u64(paired32, paired32, 28));
     return vgetq_lane_u8(paired64, 0) | ((int)vgetq_lane_u8(paired64, 8) << 8);
 }
-#else
-static inline uint16_t neon_movemask(uint8x16_t v) {
-    // extraire bit MSB de chaque byte
-    uint8x16_t shifted = vshrq_n_u8(v, 7);
-
-    uint8_t tmp[16];
-    vst1q_u8(tmp, shifted);
-
-    uint16_t mask = 0;
-    for (int i = 0; i < 16; i++) {
-        mask |= (tmp[i] & 1) << i;
-    }
-
-    return mask;
-}
-#endif
 
 // ==========================
 // FONCTION PRINCIPALE

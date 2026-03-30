@@ -14,6 +14,7 @@
 //
 //
 #include "./hls/fastq/fastq_parser.hpp"
+#include "./hls/fastq/fastq_parser_neon.hpp"
 //
 #include "./hls/fasta/fasta_parser.hpp"
 #include "./hls/fasta/fasta_parser_neon.hpp"
@@ -48,6 +49,8 @@ int main(int argc, char* argv[])
         fasta_neon_json_parser(file_i, file_o);
     }else if( type == "naive_q" ){
         fastq_branchless_parser(file_i, file_o);
+    }else if( type == "neon_q" ){
+        fastq_neon_parser(file_i, file_o);
     }else{
         printf("(II) Parser type not recognize (%s)\n", type.c_str());
         exit(EXIT_FAILURE);

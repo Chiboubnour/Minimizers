@@ -41,6 +41,7 @@
 //
 //
 #include "./hls/fastq/fastq_parser.hpp"
+#include "./hls/fastq/fastq_parser_neon.hpp"
 //
 #include "./hls/fasta/fasta_parser.hpp"
 #include "./hls/fasta/fasta_parser_neon.hpp"
@@ -310,7 +311,7 @@ TEST_CASE( "NAIVE", "[naiveq-test-1]" )
     const std::string file_r = "../data/fastq/test_1/golden.txt";
     const std::string file_o = "./resu.txt";
 
-    fastq_branchless_parser(file_i, file_o);
+    fastq_neon_parser(file_i, file_o);
 
     const bool isOK = fichiersEquivalents(file_o, file_r);
 
@@ -324,7 +325,7 @@ TEST_CASE( "NAIVE", "[naiveq-test-2]" )
     const std::string file_r = "../data/fastq/test_2/golden.txt";
     const std::string file_o = "./resu.txt";
 
-    fastq_branchless_parser(file_i, file_o);
+    fastq_neon_parser(file_i, file_o);
 
     const bool isOK = fichiersEquivalents(file_o, file_r);
 
@@ -338,7 +339,7 @@ TEST_CASE( "NAIVE", "[naiveq-test-3]" )
     const std::string file_r = "../data/fastq/test_3/golden.txt";
     const std::string file_o = "./resu.txt";
 
-    fastq_branchless_parser(file_i, file_o);
+    fastq_neon_parser(file_i, file_o);
 
     const bool isOK = fichiersEquivalents(file_o, file_r);
 
@@ -352,7 +353,68 @@ TEST_CASE( "NAIVE", "[naiveq-test-4]" )
     const std::string file_r = "../data/fastq/test_4/golden.txt";
     const std::string file_o = "./resu.txt";
 
-    fastq_branchless_parser(file_i, file_o);
+    fastq_neon_parser(file_i, file_o);
+
+    const bool isOK = fichiersEquivalents(file_o, file_r);
+
+    REQUIRE( isOK == true );
+}
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+TEST_CASE( "NAIVE", "[neonq-test-1]" )
+{
+    const std::string file_i = "../data/fastq/test_1/input.fastq";
+    const std::string file_r = "../data/fastq/test_1/golden.txt";
+    const std::string file_o = "./resu.txt";
+
+    fastq_neon_parser(file_i, file_o);
+
+    const bool isOK = fichiersEquivalents(file_o, file_r);
+
+    REQUIRE( isOK == true );
+}
+//
+//
+TEST_CASE( "NAIVE", "[neonq-test-2]" )
+{
+    const std::string file_i = "../data/fastq/test_2/input.fastq";
+    const std::string file_r = "../data/fastq/test_2/golden.txt";
+    const std::string file_o = "./resu.txt";
+
+    fastq_neon_parser(file_i, file_o);
+
+    const bool isOK = fichiersEquivalents(file_o, file_r);
+
+    REQUIRE( isOK == true );
+}
+//
+//
+TEST_CASE( "NAIVE", "[neonq-test-3]" )
+{
+    const std::string file_i = "../data/fastq/test_3/input.fastq";
+    const std::string file_r = "../data/fastq/test_3/golden.txt";
+    const std::string file_o = "./resu.txt";
+
+    fastq_neon_parser(file_i, file_o);
+
+    const bool isOK = fichiersEquivalents(file_o, file_r);
+
+    REQUIRE( isOK == true );
+}
+//
+//
+TEST_CASE( "NAIVE", "[neonq-test-4]" )
+{
+    const std::string file_i = "../data/fastq/test_4/input.fastq";
+    const std::string file_r = "../data/fastq/test_4/golden.txt";
+    const std::string file_o = "./resu.txt";
+
+    fastq_neon_parser(file_i, file_o);
 
     const bool isOK = fichiersEquivalents(file_o, file_r);
 

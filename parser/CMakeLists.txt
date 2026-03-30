@@ -28,6 +28,7 @@ add_executable(main
 	./src/tools/compare.cpp
 	./src/tools/TimeMeasure.cpp
 	./src/hls/fastq/fastq_parser.cpp
+	./src/hls/fastq/fastq_parser_neon.cpp
 	./src/hls/fasta/fasta_parser.cpp
 	./src/hls/fasta/fasta_parser_neon.cpp
 	./src/hls/fasta/fasta_parser_neon_ultimate.cpp
@@ -46,6 +47,7 @@ set(SOURCE_FILES
 	./src/tools/TimeMeasure.cpp
 	./src/catch2v3/catch_amalgamated.cpp
 	./src/hls/fastq/fastq_parser.cpp
+	./src/hls/fastq/fastq_parser_neon.cpp
 	./src/hls/fasta/fasta_parser.cpp
 	./src/hls/fasta/fasta_parser_neon.cpp
 	./src/hls/fasta/fasta_parser_neon_ultimate.cpp
