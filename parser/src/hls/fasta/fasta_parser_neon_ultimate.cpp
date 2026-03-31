@@ -1,3 +1,4 @@
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #include <ap_int.h>
 #include <hls_stream.h>
 #include <cstdint>
@@ -228,3 +229,4 @@ void fasta_neon_ultimate_parser(
 //
 //
 //
+#endif

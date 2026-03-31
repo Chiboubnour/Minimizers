@@ -115,6 +115,7 @@ TEST_CASE( "NAIVE", "[naive-test-4]" )
 //
 //
 //
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 TEST_CASE( "NAIVE", "[neon-test-1]" )
 {
     const std::string file_i = "../data/fasta/test_1/input.fasta";
@@ -169,6 +170,7 @@ TEST_CASE( "NAIVE", "[neon-test-4]" )
 
     REQUIRE( isOK == true );
 }
+#endif
 //
 //
 //
@@ -176,6 +178,7 @@ TEST_CASE( "NAIVE", "[neon-test-4]" )
 //
 //
 //
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 TEST_CASE( "NAIVE", "[ultra-test-1]" )
 {
     const std::string file_i = "../data/fasta/test_1/input.fasta";
@@ -230,6 +233,7 @@ TEST_CASE( "NAIVE", "[ultra-test-4]" )
 
     REQUIRE( isOK == true );
 }
+#endif
 //
 //
 //
@@ -244,6 +248,7 @@ TEST_CASE( "NAIVE", "[ultra-test-4]" )
 //
 //
 //
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 TEST_CASE( "NAIVE", "[json-test-1]" )
 {
     const std::string file_i = "../data/fasta/test_1/input.fasta";
@@ -298,6 +303,7 @@ TEST_CASE( "NAIVE", "[json-test-4]" )
 
     REQUIRE( isOK == true );
 }
+#endif
 //
 //
 //
@@ -366,6 +372,7 @@ TEST_CASE( "NAIVE", "[naiveq-test-4]" )
 //
 //
 //
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 TEST_CASE( "NAIVE", "[neonq-test-1]" )
 {
     const std::string file_i = "../data/fastq/test_1/input.fastq";
@@ -420,6 +427,7 @@ TEST_CASE( "NAIVE", "[neonq-test-4]" )
 
     REQUIRE( isOK == true );
 }
+#endif
 //
 //
 //

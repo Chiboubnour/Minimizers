@@ -41,16 +41,20 @@ int main(int argc, char* argv[])
 
     if( type == "naive" ){
         fasta_branchless_parser(file_i, file_o);
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
     }else if( type == "neon" ){
         fasta_neon_parser(file_i, file_o);
     }else if( type == "ultra" ){
         fasta_neon_ultimate_parser(file_i, file_o);
     }else if( type == "json" ){
         fasta_neon_json_parser(file_i, file_o);
+#endif
     }else if( type == "naive_q" ){
         fastq_branchless_parser(file_i, file_o);
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
     }else if( type == "neon_q" ){
         fastq_neon_parser(file_i, file_o);
+#endif
     }else{
         printf("(II) Parser type not recognize (%s)\n", type.c_str());
         exit(EXIT_FAILURE);

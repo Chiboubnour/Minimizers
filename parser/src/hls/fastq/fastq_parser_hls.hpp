@@ -1,10 +1,8 @@
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #include <ap_int.h>
 #include <hls_stream.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstdint>
-#include <string>
 //
 //
 //
@@ -12,7 +10,7 @@
 //
 //
 //
-extern void fasta_neon_ultimate(
+extern void fastq_hls(
     const char* input,
     size_t      size,
     char*       output,
@@ -20,7 +18,7 @@ extern void fasta_neon_ultimate(
 );
 //
 //
-extern void fasta_neon_ultimate_parser(
+extern void fastq_neon_hls(
     const std::string& file_i,
     const std::string& file_o
 );
@@ -30,4 +28,14 @@ extern void fasta_neon_ultimate_parser(
 //
 //
 //
-#endif
+
+//uint8x16_t 
+
+template<int P, int W>
+struct ap_uint8xP_t
+{
+    ap_uint<W> v[P];
+    ap_uint<W> valid;
+    ap_uint<W> eos;
+    ap_uint<W> eof];
+};
