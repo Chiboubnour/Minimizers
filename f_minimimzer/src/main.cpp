@@ -13,15 +13,7 @@
 //
 //
 //
-#include "./hls/fastq/fastq_parser_hls.hpp"
-//
-#include "./hls/fastq/fastq_parser.hpp"
-#include "./hls/fastq/fastq_parser_neon.hpp"
-//
-#include "./hls/fasta/fasta_parser.hpp"
-#include "./hls/fasta/fasta_parser_neon.hpp"
-#include "./hls/fasta/fasta_parser_neon_ultimate.hpp"
-#include "./hls/fasta/fasta_parser_neon_json.hpp"
+#include "./hls/m1_thr_reader.hpp"
 //
 //
 //
@@ -31,6 +23,8 @@
 //
 int main(int argc, char* argv[])
 {
+
+#if 0
     if( argc < 4 ){
         printf("(II) Not enought arguments\n");
         printf("(II) ./main input_file output_file type\n");
@@ -61,7 +55,7 @@ int main(int argc, char* argv[])
         printf("(II) Parser type not recognize (%s)\n", type.c_str());
         exit(EXIT_FAILURE);
     }
-    
+#endif
     return 0;
 }
 //

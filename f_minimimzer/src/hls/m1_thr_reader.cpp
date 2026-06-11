@@ -1,5 +1,4 @@
-#pragma once
-#include "./header.hpp"
+#include "./m1_thr_reader.hpp"
 //
 //
 //
@@ -28,7 +27,7 @@ ap_uint<8> valid_bits(const int reste)
 
 //
 //
-static void thr_reader(
+void thr_reader(
     const ap_uint< MEM_WIDTH >* base_ptr_i,
     const ap_uint<        64 >  n_bases_i,
     hls::stream< ap_uint<64> >& base_stream_o,
@@ -53,8 +52,13 @@ static void thr_reader(
 
         base_cnt -= PAR_FACTOR;
     }
-    base_stream.write(0);
-    base_valid.write(0);
+
+    //
+    // On envoie un paquet terminal pour indiquer à tout le monde que l'on est
+    // arrivé au bout de la séquence à traiter
+    //
+    base_stream_o.write(0);
+    base_valid_o.write(0);
 }
 //
 //

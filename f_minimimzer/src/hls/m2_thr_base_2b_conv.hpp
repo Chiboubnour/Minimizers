@@ -1,0 +1,18 @@
+#pragma once
+#include "./header.hpp"
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+extern void thr_adapter_hls(
+    hls::stream<ap_uint<64>>& base_stream_i,
+    hls::stream<ap_uint<8>>&  base_valid_i,
+    hls::stream<ap_uint<16>>& base_stream_o,
+    hls::stream<ap_uint<8>>&  base_valid_o
+);
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
