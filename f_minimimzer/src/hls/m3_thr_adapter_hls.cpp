@@ -1,3 +1,4 @@
+#include "./m3_thr_adapter_hls.hpp"
 //
 //
 //
@@ -8,18 +9,19 @@
 //
 //
 static void thr_adapter_hls(
-    hls::stream<ap_uint<64>>& base_stream,
-    hls::stream<ap_uint<8>>&  base_valid,
-    hls::stream<ap_uint<64>>& out_stream,
-    hls::stream<ap_uint<8>>&  out_valid
+    hls::stream<ap_uint< 2 * PAR_FACTOR >>& base_stream,
+    hls::stream<ap_uint<     PAR_FACTOR >>& base_valid,
+    hls::stream<ap_uint< 2 * PAR_FACTOR >>& out_stream,
+    hls::stream<ap_uint<     PAR_FACTOR >>& out_valid
 ){
 #pragma HLS INLINE off
 
     // buffer 128 bits pour absorber 2 mots de 64 bits (64 bases 2 bits)
     ap_uint<128> buffer      = 0;
-    ap_uint<8>   valid_count = 0;
+    ap_uint<  8> valid_count = 0;
 
-    while (true){
+    while (true)
+    {
 #pragma HLS PIPELINE II=1
 #pragma HLS loop_tripcount min=100 max=100
 
@@ -42,7 +44,7 @@ static void thr_adapter_hls(
         buffer.range(valid_count*2 + 63, valid_count*2) = in_word;
         valid_count += in_valid;
 
-        if(valid_count >= Parallel_factor){
+        if(valid_count >= PAR_FACTOR){
 
             out_stream.write(buffer.range(63, 0));
             out_valid.write(Parallel_factor);
