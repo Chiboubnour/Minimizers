@@ -1,3 +1,4 @@
+#include "./m4_thr_smer_gen.hpp"
 //
 //
 //
@@ -7,17 +8,16 @@
 //
 //
 //
-template<int S_BASE>
-void thr_smer_generate(
-    hls::stream<ap_uint<64>>& base_stream,
-    hls::stream<ap_uint<8>>&  base_valid,
-    hls::stream<ap_uint<Parallel_factor*2*S_BASE>>& smer_stream,
-    hls::stream<ap_uint<8>>&  smer_valid
+void thr_smer_gen(
+    hls::stream<ap_uint<2 *             PAR_FACTOR>>& base_stream_i,
+    hls::stream<ap_uint<                PAR_FACTOR>>& base_valid_i,
+    hls::stream<ap_uint<2 * SMER_SIZE * PAR_FACTOR>>& smer_stream_o,
+    hls::stream<ap_uint<                PAR_FACTOR>>& smer_valid_o
 ){
 #pragma HLS INLINE off
 
-    constexpr int S_BITS = 2*S_BASE;
-    const ap_uint<S_BITS> MASK = ap_uint<S_BITS>(-1);
+    constexpr int SMER_BITS = 2 * S_BASE;
+    const ap_uint<SMER_BITS> MASK = ap_uint<S_BITS>(-1);
 
     ap_uint<S_BITS> fwd_state = 0;
     ap_uint<S_BITS> rev_state = 0;
