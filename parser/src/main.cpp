@@ -13,6 +13,8 @@
 //
 //
 //
+#include "./hls/fastq/fastq_parser_hls.hpp"
+//
 #include "./hls/fastq/fastq_parser.hpp"
 #include "./hls/fastq/fastq_parser_neon.hpp"
 //

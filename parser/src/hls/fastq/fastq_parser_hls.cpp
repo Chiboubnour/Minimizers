@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdint>
-#include <arm_neon.h>
 
+#include "fastq_parser_hls.hpp"
 #include "../../tools/TimeMeasure.hpp"
 #include "../../tools/stats.hpp"
 //
@@ -14,40 +14,28 @@
 //
 //
 //
-inline uint16_t neon_movemask(const uint8x16_t input)
+bool isEqual(const ap_uint<8> val, const uint8_t c)
 {
-    const uint16x8_t high_bits = vreinterpretq_u16_u8 (vshrq_n_u8 (input, 7));
-    const uint32x4_t paired16  = vreinterpretq_u32_u16(vsraq_n_u16(high_bits, high_bits, 7));
-    const uint64x2_t paired32  = vreinterpretq_u64_u32(vsraq_n_u32(paired16, paired16, 14));
-    const uint8x16_t paired64  = vreinterpretq_u8_u64 (vsraq_n_u64(paired32, paired32, 28));
-    return vgetq_lane_u8(paired64, 0) | ((int)vgetq_lane_u8(paired64, 8) << 8);
+    return (val == c);
 }
 //
-//
-//
-////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-inline int is_zero_u8x16(const uint8x16_t v) {
-    return vmaxvq_u8(v) == 0;
+template<int P>
+bool has_new_line(const ap_uint<8*P>& lane)
+{
+    bool hasNL = false;
+    for(int i = 0; i < P; i += 1){
+        const ap_uint<8> val = lane.range(8 * i - 1, 8 * i);
+        hasNL |= isEqual(v, '\n');
+    }
+    return hasNL;
 }
 //
-inline int is_nzero_u8x16(const uint8x16_t v) {
-    return vmaxvq_u8(v) != 0;
-}
-//
-void fastq_neon(
-    const char* input,
+template<int P, int W>
+void fastq_hls(
+    const ap_uint<P>* input,
     size_t size,
-    char* output,
-    size_t* out_size
+    ap_uintWxP_t<P,W> output
 ) {
-    const uint8_t* ptr_i = (const uint8_t*)input;
-          uint8_t* ptr_o = (      uint8_t*)output;
-
-    const uint8x16_t n_line = vdupq_n_u8('\n');
-
     size_t pos = 0;
     size_t i   = 0;
 
@@ -121,8 +109,6 @@ void fastq_neon(
         output[pos] = '\n';
         pos += 1;
     }
-
-    *out_size = pos;
 }
 //
 //
@@ -131,7 +117,7 @@ void fastq_neon(
 //
 //
 //
-void fastq_neon_parser(
+void fastq_hls_parser(
     const std::string& file_i,
     const std::string& file_o
 ){
@@ -182,7 +168,7 @@ void fastq_neon_parser(
     //
     c_time.start();
     size_t out_size;
-    fastq_neon(buffer_i, size, buffer_o, &out_size);
+    fastq_hls(buffer_i, size, buffer_o);
     c_time.stop();
 
     std::cout << "Temps : " << c_time.ms() << " ms and debit : " << c_time.MBps(rBytes) << " Mbps" << std::endl;
