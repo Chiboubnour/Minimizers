@@ -10,11 +10,32 @@
 //
 //
 //
+template<int P, int W>
+struct ap_uintWxP_t
+{
+    ap_uint<W> v[P];    // the ASCII values
+    ap_uint<P> valid;   // the valid bit : is it sequence information
+    ap_uint<P> eos;     // end of sequence bit
+    ap_uint<P> eof;     // end of file bit => we should stop
+};
+
+template <int gf_size>
+struct symbols_i
+{
+	int32_t value[gf_size];
+	bool is_freq;
+};
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+template<int P, int W>
 extern void fastq_hls(
     const char* input,
     size_t      size,
-    char*       output,
-    size_t*     out_size
+    ap_uintWxP_t<P,W>* output
 );
 //
 //
@@ -28,14 +49,3 @@ extern void fastq_neon_hls(
 //
 //
 //
-
-//uint8x16_t 
-
-template<int P, int W>
-struct ap_uint8xP_t
-{
-    ap_uint<W> v[P];
-    ap_uint<W> valid;
-    ap_uint<W> eos;
-    ap_uint<W> eof];
-};
