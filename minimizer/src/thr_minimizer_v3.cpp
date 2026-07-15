@@ -471,7 +471,7 @@ void thread_store_burst_v8(
     ap_uint<64> burst_buf[64];
 #pragma HLS ARRAY_PARTITION variable=burst_buf complete
 
-    ap_uint<6> bcnt = 0;
+    ap_uint<7> bcnt = 0;
 
     while (true) {
 #pragma HLS PIPELINE II=1
