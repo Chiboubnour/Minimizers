@@ -10,7 +10,15 @@ constexpr int SMER_SIZE   = 19;
 constexpr int WINDOW_SIZE = 16;
 constexpr int SMER_BITS   = 2 * SMER_SIZE;
 
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 inline ap_uint<PAR_FACTOR> valid_bits(const ap_uint<64> reste)
 {
@@ -46,6 +54,15 @@ void thr_reader(
     base_stream_o.write(0);
     base_valid_o.write (0);
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_adapter_hls(
     hls::stream<ap_uint< 8 * PAR_FACTOR >>& base_stream_i,
@@ -81,6 +98,15 @@ void thr_adapter_hls(
         }
     }
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void m3_thr_base_adapter(
     hls::stream<ap_uint< 2 * PAR_FACTOR >>& base_stream,
@@ -153,6 +179,15 @@ void m3_thr_base_adapter(
     out_stream.write(0);
     out_valid.write (0);
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_smer_gen(
     hls::stream<ap_uint<2 *             PAR_FACTOR>>& base_stream_i,
@@ -201,7 +236,6 @@ void thr_smer_gen(
 
         ap_uint<2 * PAR_FACTOR> new_rev = 0;
         for (int j = 0; j < PAR_FACTOR; j++) {
-#pragma HLS UNROLL
             new_rev.range(2 * (PAR_FACTOR - 1 - j) + 1, 2 * (PAR_FACTOR - 1 - j)) = in_word.range(2 * j + 1, 2 * j);
         }
 
@@ -210,13 +244,11 @@ void thr_smer_gen(
         ap_uint<2 * SMER_SIZE * PAR_FACTOR> packed_out = 0;
         for (int i = 0; i < PAR_FACTOR; i++)
         {
-#pragma HLS UNROLL
             const ap_uint<SMER_BITS> fwd = win.range(2 * (PAR_FACTOR - 1 - i) + 2 * SMER_SIZE - 1,
                                                      2 * (PAR_FACTOR - 1 - i));
             ap_uint<SMER_BITS> rev = 0;
             for (int t = 0; t < SMER_SIZE; t++)
             {
-#pragma HLS UNROLL
                 const ap_uint<2> base = fwd.range(2 * t + 1, 2 * t);
                 rev.range(2 * (SMER_SIZE - 1 - t) + 1, 2 * (SMER_SIZE - 1 - t)) = base ^ ap_uint<2>(0x2);
             }
@@ -233,6 +265,15 @@ void thr_smer_gen(
     smer_stream_o.write(0);
     smer_valid_o.write (0);
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_hash(
     hls::stream<ap_uint< 2 * SMER_SIZE * PAR_FACTOR >>&  smer_stream_i,
@@ -259,7 +300,6 @@ void thr_hash(
 
         ap_uint<2 * SMER_SIZE * PAR_FACTOR> packed_hash = 0;
         for (int i = 0; i < PAR_FACTOR; i++) {
-#pragma HLS UNROLL
             const ap_uint<S_BITS> smer = packed_smer.range((i + 1) * S_BITS - 1, i * S_BITS);
             const ap_uint<S_BITS> h    = hash_u64<S_BITS>((ap_uint<64>)smer);
             packed_hash.range((i + 1) * S_BITS - 1, i * S_BITS) = h;
@@ -269,6 +309,15 @@ void thr_hash(
         hash_valid_o.write (valid);
     }
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_adapter_smer(
     hls::stream<ap_uint<2 * SMER_SIZE * PAR_FACTOR>>& smer_stream_i,
@@ -341,7 +390,6 @@ void thr_adapter_smer(
             ap_uint<PAR_FACTOR> out_valid=0;
 
             for(int i=0;i<PAR_FACTOR-offset;i++){
-#pragma HLS UNROLL
                 out_data.range((i+1)*S_BITS-1,i*S_BITS)=
                     buffer_data.range((i+1)*S_BITS-1,i*S_BITS);
 
@@ -349,7 +397,6 @@ void thr_adapter_smer(
             }
 
             for(int i=0;i<offset;i++){
-#pragma HLS UNROLL
                 out_data.range((PAR_FACTOR-offset+i+1)*S_BITS-1,
                                (PAR_FACTOR-offset+i)*S_BITS)=
                     d.range((i+1)*S_BITS-1,i*S_BITS);
@@ -363,7 +410,6 @@ void thr_adapter_smer(
             }
 
             for(int i=0;i<PAR_FACTOR-offset;i++){
-#pragma HLS UNROLL
                 buffer_data.range((i+1)*S_BITS-1,i*S_BITS)=
                     d.range((offset+i+1)*S_BITS-1,(offset+i)*S_BITS);
 
@@ -375,6 +421,15 @@ void thr_adapter_smer(
     smer_stream_o.write(0);
     smer_valid_o.write(0);
 }
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_min_v8(
     hls::stream<ap_uint< 2 * SMER_SIZE * PAR_FACTOR >>&  hash_stream_i,
@@ -396,7 +451,7 @@ void thr_min_v8(
     ap_uint<         PAR_FACTOR> in_valid;
 
     //
-    // Prologue : first_rounds paquets pleins + 1 paquet de n_last_round hashes.
+    //  first_rounds paquets pleins + 1 paquet de n_last_round hashes.
     //
     for (int r = 0; r < first_rounds; r++) {
         in_word  = hash_stream_i.read();
@@ -407,9 +462,7 @@ void thr_min_v8(
     in_valid = hash_valid_i.read();
     mem.range(HIST_BITS - 1, S_BITS * PAR_FACTOR * first_rounds) = in_word.range(n_last_round * S_BITS - 1, 0);
 
-    //
-    // Regime permanent.
-    //
+   
     while (true) {
 #pragma HLS PIPELINE II=1
 #pragma HLS loop_tripcount min=100 max=100
@@ -443,101 +496,15 @@ void thr_min_v8(
     min_stream_o.write(0);
     min_valid_o.write (0);
 }
-#if 0
-template<int PAR_FACTOR>
-void thr_dedup_v8(
-    hls::stream<ap_uint< 2 * SMER_SIZE * PAR_FACTOR >>&  min_stream_i,
-    hls::stream<ap_uint<                 PAR_FACTOR >>&  min_valid_i,
-    hls::stream<ap_uint< 2 * SMER_SIZE * PAR_FACTOR >>&  dedup_stream_o,
-    hls::stream<ap_uint<             8             >>&   dedup_count_o
-){
-#pragma HLS INLINE off
-
-    constexpr int S_BITS = 2 * SMER_SIZE;
-
-    ap_uint<S_BITS> last     = 0;
-    bool            has_last = false;
-
-    while (true) {
-#pragma HLS PIPELINE II=1
-#pragma HLS loop_tripcount min=100 max=100
-
-        const ap_uint<2*SMER_SIZE*PAR_FACTOR> in_word  = min_stream_i.read();
-        const ap_uint<            PAR_FACTOR> in_valid = min_valid_i.read();
-
-        if (in_valid == 0) {
-            dedup_stream_o.write(0);
-            dedup_count_o.write(0);
-            break;
-        }
-
-        // ── Extraction — UNROLL ──────────────────────────────────────
-        ap_uint<S_BITS> val[PAR_FACTOR];
-        for (int i = 0; i < PAR_FACTOR; i++) {
-            val[i] = in_word.range((i+1)*S_BITS - 1, i*S_BITS);
-        }
-
-        // ── Déduplication via last_pipe — UNROLL ─────────────────────
-        ap_uint<S_BITS> last_pipe[PAR_FACTOR + 1];
-        bool            has_pipe [PAR_FACTOR + 1];
-
-        last_pipe[0] = last;
-        has_pipe [0] = has_last;
-
-        ap_uint<PAR_FACTOR> out_valid = 0;
-
-        for (int i = 0; i < PAR_FACTOR; i++) {
-            if (in_valid[i]) {
-                bool is_new    = !has_pipe[i] || (val[i] != last_pipe[i]);
-                out_valid[i]   = is_new;
-                last_pipe[i+1] = is_new ? val[i] : last_pipe[i];
-                has_pipe [i+1] = true;
-            } else {
-                last_pipe[i+1] = last_pipe[i];
-                has_pipe [i+1] = has_pipe[i];
-                out_valid[i]   = 0;
-            }
-        }
-
-        last     = last_pipe[PAR_FACTOR];
-        has_last = has_pipe [PAR_FACTOR];
-
-        // ── Popcount — UNROLL ────────────────────────────────────────
-        ap_uint<8> out_count = 0;
-        for (int i = 0; i < PAR_FACTOR; i++) {
-            if (out_valid[i]) out_count++;
-        }
-
-        if (out_count == 0) continue;
-
-
-        ap_uint<6> prefix[PAR_FACTOR];
-
-        for (int i = 0; i < PAR_FACTOR; i++) {
-            ap_uint<6> p = 0;
-            for (int j = 0; j < i; j++) {
-                if (out_valid[j]) p++;
-            }
-            prefix[i] = p;
-        }
-
-
-        ap_uint<2*SMER_SIZE*PAR_FACTOR> out_word = 0;
-        for (int i = 0; i < PAR_FACTOR; i++) {
-            if (out_valid[i]) {
-                for (int k = 0; k < PAR_FACTOR; k++) {
-                    if (prefix[i] == k) {
-                        out_word.range((k+1)*S_BITS-1, k*S_BITS) = val[i];
-                    }
-                }
-            }
-        }
-
-        dedup_stream_o.write(out_word);
-        dedup_count_o.write(out_count);
-    }
-}
-#else
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_dedup_v8(
     hls::stream<ap_uint< 2 * SMER_SIZE * PAR_FACTOR >>&  min_stream_i,
@@ -570,13 +537,6 @@ void thr_dedup_v8(
         for (int i = 0; i < PAR_FACTOR; i++)
             val[i] = in_word.range((i+1)*S_BITS-1, i*S_BITS);
 
-        // ── Déduplication sans chaîne last_pipe ───────────────────────
-        // Principe :
-        //   - val[i] est doublon si égal à last (inter-paquet)
-        //     OU égal à val[j] pour j < i valide (intra-paquet)
-        //   - Toutes les comparaisons sont INDÉPENDANTES de last_pipe
-        //   - Chemin critique = 1 comparateur 42-bit + arbre OR
-        //     au lieu de 8 MUX 42-bit en chaîne
 
         // Étape 1 : comparaison avec last — PAR_FACTOR comparateurs parallèles
         bool eq_last[PAR_FACTOR];
@@ -640,7 +600,15 @@ void thr_dedup_v8(
         dedup_count_o.write(out_count);
     }
 }
-#endif
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 template<int PAR_FACTOR>
 void thr_store_burst(
     hls::stream<ap_uint<2 * SMER_SIZE * PAR_FACTOR>>& minz_stream_i,
@@ -774,9 +742,7 @@ void minimizer_v3(
         return;
     }
 
-    // Correction : cast explicite du pointeur d'entrée
-    const ap_uint<8 * PAR_FACTOR>* packed =
-        reinterpret_cast<const ap_uint<8 * PAR_FACTOR>*>(seq);
+    const ap_uint<8 * PAR_FACTOR>* packed =  reinterpret_cast<const ap_uint<8 * PAR_FACTOR>*>(seq);
 
     ap_uint<64>* th = reinterpret_cast<ap_uint<64>*>(tab_hash);
     ap_uint<64>  nm = 0;
