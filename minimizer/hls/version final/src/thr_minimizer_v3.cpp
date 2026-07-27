@@ -59,8 +59,6 @@ void thr_reader_mem(
     }
 }
 
-// thr_unpack : decoupe chaque beat de MEM_WIDTH bits en MEM_RATIO mots de
-// 8*PAR_FACTOR bits, pour le reste du pipeline (inchange en aval).
 template<int PAR_FACTOR>
 void thr_unpack(
     hls::stream<ap_uint<MEM_WIDTH>>&          mem_stream_i,
@@ -667,78 +665,10 @@ COMPACT_LOOP:
 //
 //
 /////////////////////////////////////////////////////////////////////////////////
-// FONCTIONS D'ISOLATION (validation thread-par-thread) -- conservees mais
-// non appelees dans le top actuel. Utiles pour re-isoler un etage si un
-// probleme de debit reapparait plus tard.
-/////////////////////////////////////////////////////////////////////////////////
 //
 //
 //
 //
-template<int PAR_FACTOR>
-void thr_compact_sink(
-    hls::stream<ap_uint<64 * PAR_FACTOR>>& elem_stream_i,
-    hls::stream<ap_uint<8>>&               elem_count_i,
-    ap_uint<64>*                           nMinizrs)
-{
-#pragma HLS INLINE off
-
-    ap_uint<64> cnt = 0;
-
-    while (true) {
-#pragma HLS PIPELINE II=1
-#pragma HLS loop_tripcount min=100 max=100
-
-        (void)elem_stream_i.read();
-        const ap_uint<8> count = elem_count_i.read();
-
-        if (count == 0) break;
-
-        cnt += count;
-    }
-
-    *nMinizrs = cnt;
-}
-//
-//
-//
-//
-/////////////////////////////////////////////////////////////////////////////////
-// ÉTAGE DE STOCKAGE — adapté du code de l'encadrant (read_burst /
-// compute / write_burst, pattern DATAFLOW avec flux valeur+enable).
-//
-// thr_flatten : convertit le format compacte de thr_compact (paquet
-// jusqu'a PAR_FACTOR elements/cycle + compteur) en un flux SCALAIRE
-// valeur+enable, 1 element/cycle, terminé par un enable=false --
-// exactement le contrat attendu par thr_write_burst ci-dessous.
-// Ceci est sans risque de goulot ici car la densite moyenne de sortie
-// (P * 2/(w+1) ~ 0.67/cycle pour PAR_FACTOR=4, WINDOW_SIZE=11) reste
-// TOUJOURS < 1 element/cycle : le debit max de ce convertisseur (1/cycle)
-// n'est jamais le facteur limitant en moyenne, et le FIFO de sortie
-// absorbe les rafales locales (jusqu'a PAR_FACTOR le meme cycle).
-//
-// thr_write_burst : reprend fidelement le squelette de l'encadrant --
-// ecriture INCONDITIONNELLE de dst[i+j] tant que !lastE (c'est cette
-// regularite qui permet l'inference de burst AXI4, comme demontre dans
-// son exemple), avec #pragma HLS DEPENDENCE pour lever la fausse
-// dependance WAW sur dst. Seule correction : le calcul de cnt, qui dans
-// l'original ne s'incrementait qu'une fois (bug du squelette de demo) --
-// ici cnt += e compte chaque element reellement valide.
-/////////////////////////////////////////////////////////////////////////////////
-//
-//
-//
-//
-// GROUP_W/GROUP_BITS : voir minimizer.hpp (nombre d'elements de 64 bits
-// regroupes par mot de sortie avant d'ecrire dans tab_hash).
-//
-// thr_flatten : deballe le format compacte de thr_compact (jusqu'a
-// PAR_FACTOR elements/cycle + compteur) et EMPAQUETTE par groupes de
-// GROUP_W elements (256 bits) avant d'ecrire dans le flux de sortie -- une
-// seule lecture du flux out_v suffit ensuite a thr_write_burst (pas de
-// lecture multiple du meme flux, qui cassait l'II=1). Le compte total
-// d'elements (scalaire, pas de groupes) est transmis via total_o, lu une
-// seule fois a la fin par thr_count_sink.
 template<int PAR_FACTOR>
 void thr_flatten(
     hls::stream<ap_uint<64 * PAR_FACTOR>>& elem_stream_i,
@@ -797,18 +727,15 @@ void thr_flatten(
     }
 }
 
-static void thr_count_sink(
-    hls::stream<ap_uint<64>>& total_i,
-    ap_uint<64>*              nMinizrs)
-{
-#pragma HLS INLINE off
-    *nMinizrs = total_i.read();
-}
-
-// thr_write_burst : ecrit tab_hash par groupes de GROUP_W elements (256
-// bits) -- 1 SEULE lecture de flux par iteration (inv/ine deja empaquetes
-// par thr_flatten), meme structure simple validee que la version scalaire
-// et la version par paires.
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void thr_write_burst(
     hls::stream<ap_uint<GROUP_BITS>>& inv,
     hls::stream<bool>&                ine,
@@ -841,7 +768,31 @@ void thr_write_burst(
         if (lastE) break;
     }
 }
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
+static void thr_count_sink(
+    hls::stream<ap_uint<64>>& total_i,
+    ap_uint<64>*              nMinizrs)
+{
+#pragma HLS INLINE off
+    *nMinizrs = total_i.read();
+}
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 void minimizer(
     const ap_uint<MEM_WIDTH>*    packed_sequence,
     ap_uint<GROUP_BITS>*         tab_hash,
@@ -849,8 +800,8 @@ void minimizer(
     ap_uint<64>                  n_bases
 ){
 
-	#pragma HLS INTERFACE m_axi port=packed_sequence offset=slave bundle=gmem0 num_read_outstanding=32  depth=COSIM_MAX_BEATS max_read_burst_length=64
-	#pragma HLS INTERFACE m_axi port=tab_hash        offset=slave bundle=gmem1 num_write_outstanding=32 depth=COSIM_MAX_HASHGROUP max_write_burst_length=128
+#pragma HLS INTERFACE m_axi port=packed_sequence offset=slave bundle=gmem0 num_read_outstanding=32  depth=COSIM_MAX_BEATS max_read_burst_length=64
+#pragma HLS INTERFACE m_axi port=tab_hash        offset=slave bundle=gmem1 num_write_outstanding=32 depth=COSIM_MAX_HASHGROUP max_write_burst_length=128
 #pragma HLS INTERFACE s_axilite port=nMinizrs
 #pragma HLS INTERFACE s_axilite port=n_bases
 #pragma HLS INTERFACE s_axilite port=return
@@ -914,14 +865,19 @@ void minimizer(
     thr_min_v8<PAR_FACTOR>(s_win, s_win_v, s_min, s_min_v);
     thr_dedup_v8<PAR_FACTOR>(s_min, s_min_v, s_ded, s_ded_v);
     thr_compact<PAR_FACTOR>(s_ded, s_ded_v, s_elem, s_elem_count);
-
     thr_flatten<PAR_FACTOR>(s_elem, s_elem_count, s_flat_v, s_flat_e, s_total);
     thr_write_burst(s_flat_v, s_flat_e, tab_hash, n_bases);
     thr_count_sink(s_total, nMinizrs);
 }
-
-
-
+//
+//
+//
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+//
 extern "C"
 void minimizer_v3(
     const uint64_t* seq,
