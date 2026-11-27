@@ -31,7 +31,7 @@ int run_minimizer(
     int         n_threads
 )
 {
-    return t_minimizer_sequence_omp<19,16>(
+    return t_minimizer_sequence_omp<31,19>(
         sequence,
         n_bases,
         tab_hash,
@@ -56,8 +56,8 @@ int main(int argc, char* argv[])
     std::string i_file;
     std::string o_file = "result_omp.txt";
 
-    int  s        = 19;
-    int  w        = 16;
+    int  s        = 31;
+    int  w        = 19;
     int  ntests   = 1;
     bool verbose  = true;
     int n_threads = omp_get_max_threads();
