@@ -29,8 +29,8 @@ int run_minimizer(
 )
 {
     // Add cases here if you want to benchmark other (s,w)
-    if (s == 19 && w == 16)
-        return t_minimizer_sequence<19,16>(sequence, n_bases, tab_hash);
+    if (s == 31 && w == 19)
+        return t_minimizer_sequence<31,19>(sequence, n_bases, tab_hash);
 
     std::cerr << "(EE) Unsupported parameters: s=" << s
               << " w=" << w << '\n';
@@ -54,8 +54,8 @@ int main(int argc, char* argv[])
     std::string i_file;
     std::string o_file = "result.txt";
 
-    int  s        = 19;
-    int  w        = 16;
+    int  s        = 31;
+    int  w        = 19;
     int  ntests   = 1;
     bool verbose  = true;
 
